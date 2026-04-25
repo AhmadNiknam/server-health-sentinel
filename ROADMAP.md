@@ -1,43 +1,32 @@
 # Roadmap
 
-## Version 0.1.0
+Server Health Sentinel v0.1.0 is the initial functional release for read-only local, on-prem, Azure, hybrid, trend, and optional hardware readiness reporting.
 
-- Local Windows health check
-- Storage health check
-- Network adapter health check
-- Basic event log review
-- Basic HTML/CSV/JSON report
+Future versions focus on safer integrations, better operational delivery, and optional enterprise handoff points while keeping the project complementary to monitoring platforms.
 
 ## Version 0.2.0
 
-- Event log risk analyzer
-- Disk/storage early warning detection
-- Basic predictive maintenance rules
+- Authenticated Redfish hardware sensor polling
+- Secure credential handling through SecretManagement or vault integration
 
 ## Version 0.3.0
 
-- On-prem server batch checks
-- Remote CIM/WinRM support
+- Teams/email notification
+- Scheduled Task deployment guide
+- Azure Automation Runbook option
 
 ## Version 0.4.0
 
-- Azure VM metadata and guest health checks
+- Log Analytics export
+- Dashboard integration
 
 ## Version 0.5.0
 
-- Hybrid mode
+- Optional remediation workflow with approval gates
 
-## Version 0.6.0
+## Future Ideas
 
-- Trend history
-- Historical comparison
-- Failure risk trend report
-
-## Version 0.7.0
-
-- Optional Redfish/iDRAC/iLO hardware health checks
-- Power supply health
-- Fan health
-- Temperature health
-- Hardware sensors
-- RAID/controller status where available
+- Linux server support
+- Expanded vendor hardware normalization
+- More granular trend comparison by component
+- Report templates for maintenance windows and weekly reviews
