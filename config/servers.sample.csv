@@ -1,4 +1,4 @@
-Name,Environment,Role,ConnectionType,Notes
-LAB-SRV-001,Lab,DomainController,CIM,Fake sample server
-LAB-SRV-002,Lab,FileServer,CIM,Fake sample server
-BRANCH-SRV-001,Branch,ApplicationServer,WinRM,Fake sample server
+ServerName,Environment,Role,Location,CheckMode,ExpectedNicSpeedMbps,CriticalServices,Enabled
+LAB-APP-01,Lab,Application,Lab-Rack-A,Local,1000,WinRM;EventLog;W3SVC,true
+LAB-DB-01,Lab,Database,Lab-Rack-B,OnPrem,10000,WinRM;EventLog;MSSQLSERVER,true
+LAB-FILE-01,Lab,FileServer,Lab-Rack-C,HybridCandidate,1000,WinRM;EventLog;LanmanServer,false
