@@ -37,7 +37,7 @@ function Get-ComponentCategory {
     if ($category -like 'EventLog:*' -or $category -eq 'EventLogRisk' -or $checkName -like '*Event*') { return 'EventLogRisk' }
     if ($category -eq 'PendingReboot' -or $checkName -like '*Pending Reboot*') { return 'PendingReboot' }
     if ($category -like 'Azure*' -or [string]$Finding.TargetType -eq 'AzureVM') { return 'AzureVM' }
-    if ($category -like '*Hardware*' -or $checkName -like '*Sensor*') { return 'HardwareSensor' }
+    if ($category -in @('Hardware', 'PowerSupply', 'Fan', 'Temperature', 'RAID', 'HardwareSensor') -or $category -like '*Hardware*' -or $checkName -like '*Sensor*') { return 'HardwareSensor' }
 
     return $null
 }

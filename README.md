@@ -178,6 +178,28 @@ Generated Hybrid reports are written under `reports/`, which is ignored by Git:
 - `reports/hybrid-health-findings-[timestamp].csv`
 - `reports/hybrid-health-report-[timestamp].html`
 
+## Optional Hardware Sensor Readiness
+
+Hardware sensor readiness is an optional, read-only layer for physical servers that have a management interface such as Redfish, Dell iDRAC, HPE iLO, Lenovo XClarity, or a vendor-specific endpoint. It is disabled by default and currently checks endpoint readiness only; authenticated Redfish sensor polling is planned for a future version.
+
+Future hardware checks can include power supplies, fans, temperature sensors, RAID/controller status, and other hardware sensors exposed through approved management interfaces. The tool does not claim exact failure dates or exact remaining useful life.
+
+Security model:
+
+- Hardware endpoint checks run only when `-IncludeHardware` is provided.
+- Sample endpoints are disabled by default.
+- No credentials, tokens, passwords, API keys, or secrets are stored in CSV files.
+- Real hardware endpoint inventories should use ignored local files such as `config/hardware-endpoints.csv`.
+- Checks are read-only and do not reboot, power cycle, remediate, or modify BIOS, firmware, RAID, network, or management controller settings.
+
+Example Hybrid command with hardware readiness:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -IncludeHardware -ServersPath ./config/servers.sample.csv -AzureVmsPath ./config/azure-vms.sample.csv -HardwareEndpointsPath ./config/hardware-endpoints.sample.csv
+```
+
+With the sample hardware config, all endpoints are disabled, so hardware readiness is skipped gracefully and reported as informational.
+
 ## Professional Reports
 
 Local mode converts raw health collection data into admin-friendly findings and generates professional reports under `reports/`.

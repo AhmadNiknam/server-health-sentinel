@@ -158,6 +158,33 @@ Unreachable on-prem servers usually indicate DNS, routing, firewall, WinRM/CIM, 
 
 Recommendations in Hybrid reports are advisory only. Any remediation, reboot, service restart, registry change, disk cleanup, firewall change, Windows setting change, network change, or Azure resource change requires administrator review and approval before action.
 
+## Optional Hardware Sensor Readiness
+
+Use hardware sensor readiness before maintenance when physical servers have approved management interfaces such as Redfish, iDRAC, iLO, XClarity, or another vendor endpoint. This check is optional, read-only, and disabled unless `-IncludeHardware` is provided.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -IncludeHardware -ServersPath ./config/servers.csv -AzureVmsPath ./config/azure-vms.csv -HardwareEndpointsPath ./config/hardware-endpoints.csv
+```
+
+### Before Maintenance
+
+- Confirm the local hardware endpoint inventory includes only the intended physical servers.
+- Keep endpoints disabled until read-only management access is approved.
+- Review skipped and unknown readiness findings as visibility gaps, not confirmed hardware failures.
+- Treat hardware readiness as an additional signal beside OS, storage, network, event log, Azure, and trend findings.
+
+### If Hardware Sensor Findings Appear
+
+Power supply, fan, temperature, RAID/controller, and hardware sensor findings require vendor/admin validation before action. Confirm the signal in approved vendor tooling or the management controller UI/API, review monitoring history, and check whether there is an existing incident or maintenance plan.
+
+Do not assume the report alone proves exact failure timing or remaining useful life. Use it as an early warning or readiness signal.
+
+### Remediation Reminder
+
+Server Health Sentinel does not perform remediation. It must not reboot servers, power cycle systems, change BIOS or firmware settings, modify RAID/controller state, change network settings, or modify management controller configuration. Any replacement, firmware update, cabling change, controller action, or vendor escalation must follow normal change control.
+
 ## Using Trend History
 
 Run Server Health Sentinel with `-HistoryPath ./history` during weekly health reviews so each run can compare against the latest prior snapshot. Keep the same mode and inventory scope when possible so trend comparisons are meaningful.

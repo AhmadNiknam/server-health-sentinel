@@ -152,6 +152,41 @@ Describe 'ReportGenerator' {
         $html | Should -Not -Match 'remaining useful life is'
     }
 
+    It 'exports an HTML report with Hardware Sensor Readiness when hardware findings exist' {
+        $hardwareFindings = @(
+            $script:Findings
+            [pscustomobject]@{
+                Timestamp       = Get-Date
+                TargetName      = 'HardwareSensorCollector'
+                TargetType      = 'Hardware'
+                Category        = 'Hardware'
+                CheckName       = 'Hardware Sensor Readiness'
+                Status          = 'Skipped'
+                Severity        = 'Informational'
+                Message         = 'No enabled hardware management endpoints found.'
+                Recommendation  = 'Hardware checks are optional.'
+                Evidence        = [pscustomobject]@{ EndpointMasked = '' }
+                ConfidenceLevel = 'High'
+            }
+        )
+
+        $path = Export-HealthHtmlReport -RawResult $script:RawResult -Findings $hardwareFindings -OverallScore $script:OverallScore -MaintenanceReadiness $script:MaintenanceReadiness -OutputPath $script:OutputPath
+
+        Test-Path -LiteralPath $path | Should -Be $true
+        $html = Get-Content -LiteralPath $path -Raw
+        $html | Should -Match 'Hardware Sensor Readiness'
+        $html | Should -Match 'No enabled hardware management endpoints found'
+    }
+
+    It 'exports an HTML report that mentions hardware checks are optional' {
+        $path = Export-HealthHtmlReport -RawResult $script:RawResult -Findings $script:Findings -OverallScore $script:OverallScore -MaintenanceReadiness $script:MaintenanceReadiness -OutputPath $script:OutputPath
+
+        Test-Path -LiteralPath $path | Should -Be $true
+        $html = Get-Content -LiteralPath $path -Raw
+        $html | Should -Match 'Hardware checks are optional'
+        $html | Should -Match 'Credentials are not stored by this tool'
+    }
+
     It 'exports an OnPrem HTML report with target-aware findings' {
         $rawResults = @(
             [pscustomobject]@{ TargetName = 'LAB-MOCK-01'; TargetType = 'OnPrem'; Timestamp = Get-Date },

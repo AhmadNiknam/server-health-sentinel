@@ -247,9 +247,10 @@ function Export-HealthHtmlReport {
         Get-CategorySummary -Findings $Findings -Title 'Azure disks' -Filter { $_.Category -eq 'AzureDisk' }
         Get-CategorySummary -Findings $Findings -Title 'Azure network' -Filter { $_.Category -eq 'AzureNetwork' }
         Get-CategorySummary -Findings $Findings -Title 'Azure guest health' -Filter { $_.Category -eq 'AzureGuestHealth' }
+        Get-CategorySummary -Findings $Findings -Title 'Hardware sensors' -Filter { $_.Category -in @('Hardware', 'PowerSupply', 'Fan', 'Temperature', 'RAID', 'HardwareSensor') -or $_.TargetType -in @('Hardware', 'HardwareEndpoint', 'HardwareSensor') }
     )
 
-    $targetSummaryRows = (@('Local', 'OnPrem', 'AzureVM', 'HybridMode') | ForEach-Object {
+    $targetSummaryRows = (@('Local', 'OnPrem', 'AzureVM', 'Hardware', 'HardwareEndpoint', 'HardwareSensor', 'HybridMode') | ForEach-Object {
             $currentTargetType = $_
             $items = @($Findings | Where-Object { $_.TargetType -eq $currentTargetType })
             $targets = @($items | Select-Object -ExpandProperty TargetName -Unique)
@@ -331,6 +332,29 @@ function Export-HealthHtmlReport {
     $highFindingChange = if ($null -ne $TrendComparison) { $TrendComparison.HighFindingChange } else { 0 }
     $maintenanceReadinessChange = if ($null -ne $TrendComparison) { $TrendComparison.MaintenanceReadinessChange } else { 'Unknown' }
 
+    $hardwareFindings = @($Findings | Where-Object { $_.Category -in @('Hardware', 'PowerSupply', 'Fan', 'Temperature', 'RAID', 'HardwareSensor') -or $_.TargetType -in @('Hardware', 'HardwareEndpoint', 'HardwareSensor') })
+    $hardwareEnabledEndpointCount = @($hardwareFindings | Where-Object { $_.TargetType -eq 'HardwareEndpoint' }).Count
+    $hardwareSkippedCount = @($hardwareFindings | Where-Object { $_.Status -eq 'Skipped' }).Count
+    $hardwareUnknownCount = @($hardwareFindings | Where-Object { $_.Status -eq 'Unknown' }).Count
+    $hardwareFindingRows = if ($hardwareFindings.Count -gt 0) {
+        (@($hardwareFindings) | Sort-Object TargetName, Category, CheckName | ForEach-Object {
+                @"
+<tr>
+  <td>$(ConvertTo-HtmlText -Value $_.TargetName)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.TargetType)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.Category)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.CheckName)</td>
+  <td><span class='badge $($_.Status.ToLowerInvariant())'>$(ConvertTo-HtmlText -Value $_.Status)</span></td>
+  <td>$(ConvertTo-HtmlText -Value $_.Severity)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.Message)</td>
+</tr>
+"@
+            }) -join [Environment]::NewLine
+    }
+    else {
+        '<tr><td colspan="7">No hardware sensor readiness findings are present. Hardware checks are optional and disabled unless explicitly included.</td></tr>'
+    }
+
     $componentRiskRows = if (@($ComponentRisk).Count -gt 0) {
         (@($ComponentRisk) | Sort-Object TargetName, ComponentCategory, ComponentName | ForEach-Object {
                 @"
@@ -374,6 +398,7 @@ function Export-HealthHtmlReport {
     .yellow { color: #664d03; background: #fff3cd; }
     .red { color: #842029; background: #f8d7da; }
     .unknown { color: #41464b; background: #e2e3e5; }
+    .skipped { color: #41464b; background: #e2e3e5; }
     .improving { color: #0f5132; background: #d1e7dd; }
     .stable { color: #664d03; background: #fff3cd; }
     .worsening { color: #842029; background: #f8d7da; }
@@ -461,6 +486,25 @@ function Export-HealthHtmlReport {
         </thead>
         <tbody>
           $componentRiskRows
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Hardware Sensor Readiness</h2>
+      <p>Hardware checks are optional. Hardware sensor collection requires a configured management interface such as Redfish, iDRAC, iLO, or a vendor-specific management endpoint. Credentials are not stored by this tool.</p>
+      <div class="grid">
+        <div class="card"><div class="card-title">Enabled hardware endpoints</div>$(ConvertTo-HtmlText -Value $hardwareEnabledEndpointCount)</div>
+        <div class="card"><div class="card-title">Skipped hardware checks</div>$(ConvertTo-HtmlText -Value $hardwareSkippedCount)</div>
+        <div class="card"><div class="card-title">Unknown hardware checks</div>$(ConvertTo-HtmlText -Value $hardwareUnknownCount)</div>
+        <div class="card"><div class="card-title">Hardware findings</div>$(ConvertTo-HtmlText -Value $hardwareFindings.Count)</div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>TargetName</th><th>TargetType</th><th>Category</th><th>CheckName</th><th>Status</th><th>Severity</th><th>Message</th></tr>
+        </thead>
+        <tbody>
+          $hardwareFindingRows
         </tbody>
       </table>
     </section>

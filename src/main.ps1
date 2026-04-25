@@ -19,7 +19,8 @@ param(
     [string]$PredictiveRulesPath = './config/predictive-rules.sample.json',
     [string]$HistoryPath = './history',
 
-    [switch]$IncludeLocal
+    [switch]$IncludeLocal,
+    [switch]$IncludeHardware
 )
 
 $configLoaderPath = Join-Path $PSScriptRoot 'modules/ConfigLoader.psm1'
@@ -287,6 +288,7 @@ if ($Mode -eq 'Hybrid') {
         'LocalHealthCollector.psm1',
         'OnPremHealthCollector.psm1',
         'AzureVmHealthCollector.psm1',
+        'HardwareSensorCollector.psm1',
         'HealthEvaluator.psm1',
         'ReportGenerator.psm1',
         'TrendStore.psm1',
@@ -309,6 +311,7 @@ if ($Mode -eq 'Hybrid') {
     $localTargetCount = 0
     $onPremTargetCount = 0
     $azureVmTargetCount = 0
+    $hardwareEndpointTargetCount = 0
 
     if ($IncludeLocal.IsPresent) {
         try {
@@ -452,19 +455,88 @@ if ($Mode -eq 'Hybrid') {
             })
     }
 
+    if ($IncludeHardware.IsPresent) {
+        if (Test-Path -LiteralPath $HardwareEndpointsPath -PathType Leaf) {
+            try {
+                $hardwareEndpointInventory = @(Import-HardwareEndpointInventory -Path $HardwareEndpointsPath)
+                $hardwareResults = @(Invoke-HardwareSensorCheck -HardwareEndpointInventory $hardwareEndpointInventory)
+                $hardwareFindings = @(Convert-HardwareSensorResultToFindings -HardwareSensorResult $hardwareResults)
+                foreach ($result in $hardwareResults) { $allRawResults.Add($result) }
+                foreach ($finding in $hardwareFindings) { $allFindings.Add($finding) }
+                $hardwareEndpointTargetCount = @($hardwareResults | Where-Object { $_.TargetType -eq 'HardwareEndpoint' }).Count
+                $modeSummaries.Add([pscustomobject]@{
+                        Mode         = 'Hardware'
+                        Status       = if (@($hardwareResults | Where-Object { $_.Status -eq 'Skipped' }).Count -eq $hardwareResults.Count) { 'Skipped' } else { 'Completed' }
+                        Targets      = $hardwareEndpointTargetCount
+                        FindingCount = $hardwareFindings.Count
+                        Message      = if ($hardwareEndpointTargetCount -eq 0) { 'Hardware sensor readiness skipped because no enabled endpoints were found.' } else { 'Hardware sensor readiness completed for enabled endpoints.' }
+                    })
+            }
+            catch {
+                $finding = New-HybridExecutionFinding `
+                    -ModeName 'Hardware' `
+                    -Status 'Red' `
+                    -Message "Hybrid Hardware mode failed: $($_.Exception.Message)" `
+                    -Recommendation 'Review the hardware endpoint inventory path and CSV columns. Hardware checks are optional and should use local ignored config files only.' `
+                    -Evidence ([pscustomobject]@{ Mode = 'Hardware'; HardwareEndpointsPath = $HardwareEndpointsPath; ErrorType = $_.Exception.GetType().FullName })
+                $allFindings.Add($finding)
+                $modeSummaries.Add([pscustomobject]@{
+                        Mode         = 'Hardware'
+                        Status       = 'Failed'
+                        Targets      = 0
+                        FindingCount = 1
+                        Message      = $finding.Message
+                    })
+            }
+        }
+        else {
+            $hardwareSkipped = [pscustomobject]@{
+                TargetName     = 'HardwareSensorCollector'
+                TargetType     = 'Hardware'
+                Vendor         = ''
+                ManagementType = ''
+                EndpointMasked = ''
+                Status         = 'Skipped'
+                Message        = "Hardware sensor readiness skipped because the hardware endpoint inventory file was not found: $HardwareEndpointsPath"
+                Recommendation = 'Provide a local ignored hardware endpoint inventory file only when read-only hardware management checks are intentionally enabled.'
+            }
+            $hardwareFindings = @(Convert-HardwareSensorResultToFindings -HardwareSensorResult @($hardwareSkipped))
+            $allRawResults.Add($hardwareSkipped)
+            foreach ($finding in $hardwareFindings) { $allFindings.Add($finding) }
+            $modeSummaries.Add([pscustomobject]@{
+                    Mode         = 'Hardware'
+                    Status       = 'Skipped'
+                    Targets      = 0
+                    FindingCount = $hardwareFindings.Count
+                    Message      = $hardwareSkipped.Message
+                })
+        }
+    }
+    else {
+        $modeSummaries.Add([pscustomobject]@{
+                Mode         = 'Hardware'
+                Status       = 'Skipped'
+                Targets      = 0
+                FindingCount = 0
+                Message      = 'Hardware sensor readiness was skipped because -IncludeHardware was not provided.'
+            })
+    }
+
     $combinedFindings = @($allFindings)
     $overallScore = Get-OverallHealthScore -Findings $combinedFindings
     $maintenanceReadiness = Get-MaintenanceReadinessStatus -Findings $combinedFindings
-    $totalTargetsChecked = $localTargetCount + $onPremTargetCount + $azureVmTargetCount
+    $totalTargetsChecked = $localTargetCount + $onPremTargetCount + $azureVmTargetCount + $hardwareEndpointTargetCount
 
     $hybridRawResult = [pscustomobject]@{
         Mode                = 'Hybrid'
         Timestamp           = Get-Date
         IncludeLocal        = [bool]$IncludeLocal.IsPresent
+        IncludeHardware     = [bool]$IncludeHardware.IsPresent
         TotalTargetsChecked = $totalTargetsChecked
         LocalTargets        = $localTargetCount
         OnPremTargets       = $onPremTargetCount
         AzureVmTargets      = $azureVmTargetCount
+        HardwareTargets     = $hardwareEndpointTargetCount
         ModeSummaries       = @($modeSummaries)
         Results             = @($allRawResults)
     }
@@ -484,10 +556,12 @@ if ($Mode -eq 'Hybrid') {
     Write-Information 'Server Health Sentinel hybrid health check completed.' -InformationAction Continue
     Write-Information 'Mode: Hybrid' -InformationAction Continue
     Write-Information "LocalIncluded: $([bool]$IncludeLocal.IsPresent)" -InformationAction Continue
+    Write-Information "HardwareIncluded: $([bool]$IncludeHardware.IsPresent)" -InformationAction Continue
     Write-Information "TotalTargetsChecked: $totalTargetsChecked" -InformationAction Continue
     Write-Information "LocalTargets: $localTargetCount" -InformationAction Continue
     Write-Information "OnPremTargets: $onPremTargetCount" -InformationAction Continue
     Write-Information "AzureVmTargets: $azureVmTargetCount" -InformationAction Continue
+    Write-Information "HardwareEndpointTargets: $hardwareEndpointTargetCount" -InformationAction Continue
     Write-Information "TotalFindings: $($overallScore.FindingCount)" -InformationAction Continue
     Write-Information "GreenFindings: $($overallScore.GreenCount)" -InformationAction Continue
     Write-Information "YellowFindings: $($overallScore.YellowCount)" -InformationAction Continue

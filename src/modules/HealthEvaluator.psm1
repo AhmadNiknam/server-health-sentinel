@@ -116,7 +116,7 @@ function New-HealthFinding {
         [Parameter(Mandatory)]
         [string]$CheckName,
 
-        [ValidateSet('Green', 'Yellow', 'Red', 'Unknown')]
+        [ValidateSet('Green', 'Yellow', 'Red', 'Unknown', 'Skipped')]
         [string]$Status = 'Unknown',
 
         [ValidateSet('Informational', 'Low', 'Medium', 'High', 'Critical', 'Unknown')]
@@ -554,7 +554,8 @@ function Get-OverallHealthScore {
     $score = 0
     foreach ($finding in $items) {
         $score += switch ($finding.Status) {
-            'Green' { 0 }
+        'Green' { 0 }
+            'Skipped' { 0 }
             'Yellow' { 1 }
             'Unknown' { 1 }
             'Red' { 3 }
@@ -609,6 +610,93 @@ function Get-OverallHealthScore {
         InformationalCount = $informationalCount
         SummaryMessage = $summaryMessage
     }
+}
+
+function Convert-HardwareSensorResultToFindings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$HardwareSensorResult
+    )
+
+    $findings = [System.Collections.Generic.List[object]]::new()
+    foreach ($result in @($HardwareSensorResult)) {
+        if ($null -eq $result) { continue }
+
+        $targetName = if (-not [string]::IsNullOrWhiteSpace([string]$result.TargetName)) { [string]$result.TargetName } else { 'HardwareSensorCollector' }
+        $targetType = if (-not [string]::IsNullOrWhiteSpace([string]$result.TargetType)) { [string]$result.TargetType } else { 'Hardware' }
+        $status = if ([string]$result.Status -in @('Green', 'Yellow', 'Red', 'Unknown', 'Skipped')) { [string]$result.Status } else { 'Unknown' }
+        $message = if (-not [string]::IsNullOrWhiteSpace([string]$result.Message)) { [string]$result.Message } else { 'Hardware sensor readiness could not be evaluated.' }
+        $recommendation = if (-not [string]::IsNullOrWhiteSpace([string]$result.Recommendation)) { [string]$result.Recommendation } else { 'Review hardware sensor readiness with approved vendor tooling if this signal is required.' }
+        $isMock = $false
+        if ($null -ne $result.PSObject.Properties['IsMock']) {
+            $isMock = [bool]$result.IsMock
+        }
+
+        $category = switch ([string]$result.Category) {
+            'PowerSupply' { 'PowerSupply' }
+            'Fan' { 'Fan' }
+            'Temperature' { 'Temperature' }
+            'RAID' { 'RAID' }
+            'Controller' { 'RAID' }
+            default {
+                if ($targetType -eq 'HardwareEndpoint' -or $targetType -eq 'Hardware') { 'Hardware' } else { 'HardwareSensor' }
+            }
+        }
+
+        $checkName = if (-not [string]::IsNullOrWhiteSpace([string]$result.SensorName)) {
+            [string]$result.SensorName
+        }
+        elseif ($targetType -eq 'HardwareEndpoint') {
+            'Hardware Endpoint Readiness'
+        }
+        else {
+            'Hardware Sensor Readiness'
+        }
+
+        $severity = switch ($status) {
+            'Skipped' { 'Informational' }
+            'Green' { 'Informational' }
+            'Yellow' { if ($category -in @('PowerSupply', 'Fan', 'Temperature', 'RAID')) { 'High' } else { 'Medium' } }
+            'Red' { if ($category -in @('PowerSupply', 'Fan', 'Temperature', 'RAID')) { 'Critical' } else { 'High' } }
+            default { 'Unknown' }
+        }
+
+        if ($isMock) {
+            $findings.Add((New-HealthFinding `
+                        -TargetName $targetName `
+                        -TargetType $targetType `
+                        -Category 'HardwareSensor' `
+                        -CheckName 'Mock Hardware Sensor Data' `
+                        -Status 'Yellow' `
+                        -Severity 'Low' `
+                        -Message 'Mock hardware sensor data was used for test or report rendering validation.' `
+                        -Recommendation 'Do not use mock hardware sensor results as real operational evidence.' `
+                        -Evidence ([pscustomobject]@{ IsMock = $true; Source = [string]$result.Source }) `
+                        -ConfidenceLevel 'High'))
+        }
+
+        $findings.Add((New-HealthFinding `
+                    -TargetName $targetName `
+                    -TargetType $targetType `
+                    -Category $category `
+                    -CheckName $checkName `
+                    -Status $status `
+                    -Severity $severity `
+                    -Message $message `
+                    -Recommendation $recommendation `
+                    -Evidence ([pscustomobject]@{
+                            Vendor         = $result.Vendor
+                            ManagementType = $result.ManagementType
+                            EndpointMasked = $result.EndpointMasked
+                            SensorName     = $result.SensorName
+                            IsMock         = $isMock
+                            Source         = $result.Source
+                        }) `
+                    -ConfidenceLevel $(if ($isMock) { 'High' } elseif ($status -eq 'Skipped') { 'High' } else { 'Medium' })))
+    }
+
+    return @($findings)
 }
 
 function Get-MaintenanceReadinessStatus {
@@ -684,6 +772,7 @@ Export-ModuleMember -Function @(
     'Convert-OnPremBatchHealthResultToFindings',
     'Convert-AzureVmHealthResultToFindings',
     'Convert-AzureVmBatchHealthResultToFindings',
+    'Convert-HardwareSensorResultToFindings',
     'Get-OverallHealthScore',
     'Get-MaintenanceReadinessStatus'
 )

@@ -85,6 +85,31 @@ pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -ServersPath ./config/servers.csv
 
 Hybrid mode combines Local, OnPrem, and Azure VM checks. If one source fails or a sample inventory points to fake targets, the run continues and records a structured finding for that mode.
 
+### Optional Hardware Sensor Readiness
+
+Hardware sensor readiness is optional and disabled unless `-IncludeHardware` is provided. Start from the sample file:
+
+```powershell
+Copy-Item ./config/hardware-endpoints.sample.csv ./config/hardware-endpoints.csv
+```
+
+Edit only the local ignored copy. Keep `Enabled=false` until an administrator has approved read-only access to the management interface. The CSV must not include usernames, passwords, tokens, API keys, or other secrets.
+
+Run Hybrid mode with hardware readiness:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -IncludeHardware -ServersPath ./config/servers.csv -AzureVmsPath ./config/azure-vms.csv -HardwareEndpointsPath ./config/hardware-endpoints.csv
+```
+
+The sample hardware endpoint file uses fake Redfish-style endpoint names and has all endpoints disabled, so the expected result is a graceful `Skipped` hardware readiness finding.
+
+Hardware status interpretation:
+
+- `Skipped` means hardware checks were not enabled or no enabled endpoints were found. This is informational.
+- `Unknown` means the tool could not evaluate readiness, usually because an enabled endpoint is missing a URI or uses an unsupported management type.
+- `Yellow` means an endpoint is configured for readiness, but authenticated sensor polling is not implemented in this phase.
+- `Red` is reserved for future sensor states that indicate a critical hardware signal from approved read-only polling.
+
 ### Interpreting The Combined Report
 
 The Hybrid HTML report includes an executive summary, target summary by `TargetType`, maintenance readiness, all findings, and predictive maintenance / early warning indicators. Review the target counts to confirm the expected Local, OnPrem, and Azure VM scope was checked.
