@@ -117,6 +117,53 @@ if ($Mode -eq 'OnPrem') {
     return
 }
 
+if ($Mode -eq 'Azure') {
+    $moduleNames = @(
+        'AzureVmHealthCollector.psm1',
+        'ReportGenerator.psm1',
+        'HealthEvaluator.psm1'
+    )
+
+    foreach ($moduleName in $moduleNames) {
+        $modulePath = Join-Path $PSScriptRoot "modules/$moduleName"
+        Import-Module $modulePath -Force
+    }
+
+    $thresholds = Import-HealthThresholds -Path $ThresholdsPath
+    $predictiveRules = Import-PredictiveRules -Path $PredictiveRulesPath
+    $azureVmInventory = @(Import-AzureVmInventory -Path $AzureVmsPath)
+    $azureHealthResults = @(Invoke-AzureVmHealthCheckBatch -AzureVmInventory $azureVmInventory -Thresholds $thresholds -PredictiveRules $predictiveRules)
+    $findings = @(Convert-AzureVmBatchHealthResultToFindings -AzureVmHealthResults $azureHealthResults)
+    $overallScore = Get-OverallHealthScore -Findings $findings
+    $maintenanceReadiness = Get-MaintenanceReadinessStatus -Findings $findings
+
+    $reportsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'reports'
+    if (-not (Test-Path -LiteralPath $reportsPath -PathType Container)) {
+        $null = New-Item -Path $reportsPath -ItemType Directory -Force
+    }
+
+    $rawReportPath = New-ReportFileName -Prefix 'azure-health-raw' -Extension 'json' -OutputPath $reportsPath
+    $azureHealthResults | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath $rawReportPath -Encoding utf8
+    $jsonReportPath = Export-HealthJsonReport -RawResult $azureHealthResults -Findings $findings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath -Prefix 'azure-health-findings' -ReportType 'AzureVmHealthFindings'
+    $csvReportPath = Export-HealthCsvReport -Findings $findings -OutputPath $reportsPath -Prefix 'azure-health-findings'
+    $htmlReportPath = Export-HealthHtmlReport -RawResult $azureHealthResults -Findings $findings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath -Prefix 'azure-health-report'
+
+    Write-Information 'Server Health Sentinel Azure VM health check completed.' -InformationAction Continue
+    Write-Information 'Mode: Azure' -InformationAction Continue
+    Write-Information "TotalAzureVmsLoaded: $($azureVmInventory.Count)" -InformationAction Continue
+    Write-Information "TotalAzureVmsChecked: $($azureHealthResults.Count)" -InformationAction Continue
+    Write-Information "TotalFindings: $($overallScore.FindingCount)" -InformationAction Continue
+    Write-Information "RedFindings: $($overallScore.RedCount)" -InformationAction Continue
+    Write-Information "YellowFindings: $($overallScore.YellowCount)" -InformationAction Continue
+    Write-Information "OverallStatus: $($overallScore.OverallStatus)" -InformationAction Continue
+    Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
+    Write-Information "HtmlReportPath: $htmlReportPath" -InformationAction Continue
+    Write-Information "CsvReportPath: $csvReportPath" -InformationAction Continue
+    Write-Information "JsonReportPath: $jsonReportPath" -InformationAction Continue
+    Write-Information "RawReportPath: $rawReportPath" -InformationAction Continue
+    return
+}
+
 if ($Mode -ne 'ConfigTest') {
     Write-Information 'Mode is planned for a future phase.' -InformationAction Continue
     return

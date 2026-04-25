@@ -330,6 +330,183 @@ function Convert-OnPremBatchHealthResultToFindings {
     return @($findings)
 }
 
+function Get-AzureFindingStatus {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Status
+    )
+
+    $statusText = [string]$Status
+    if ($statusText -in @('Green', 'Yellow', 'Red', 'Unknown')) {
+        return $statusText
+    }
+
+    return 'Unknown'
+}
+
+function Convert-AzureVmHealthResultToFindings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$AzureVmHealthResult
+    )
+
+    $targetName = [string]$AzureVmHealthResult.TargetName
+    $targetType = if ($AzureVmHealthResult.TargetType) { [string]$AzureVmHealthResult.TargetType } else { 'AzureVM' }
+    $findings = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($module in @($AzureVmHealthResult.AzureContext.Modules)) {
+        if ($null -eq $module) { continue }
+        $status = if ($module.Available) { 'Green' } else { 'Unknown' }
+        $recommendation = if ($module.Available) {
+            'No action is needed for this Azure PowerShell module.'
+        }
+        else {
+            "Install the '$($module.ModuleName)' PowerShell module before using Azure checks that require it."
+        }
+
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureContext' -CheckName "Az Module $($module.ModuleName)" -Status $status -Severity (Get-DefaultSeverity -Status $status) -Message ([string]$module.Message) -Recommendation $recommendation -Evidence ([pscustomobject]@{ ModuleName = $module.ModuleName; Available = $module.Available; Version = $module.Version }) -ConfidenceLevel 'High'))
+    }
+
+    $context = $AzureVmHealthResult.AzureContext.Context
+    if ($null -ne $context) {
+        $status = Get-AzureFindingStatus -Status $context.Status
+        $severity = if (-not $context.IsAuthenticated) { 'High' } else { Get-DefaultSeverity -Status $status }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureContext' -CheckName 'Azure Authentication Context' -Status $status -Severity $severity -Message ([string]$context.Message) -Recommendation 'Run Connect-AzAccount in the current PowerShell session before using Azure mode. Use an account with the least privilege needed for read-only review and optional Run Command.' -Evidence ([pscustomobject]@{ IsAuthenticated = $context.IsAuthenticated; Account = $context.Account; TenantIdMasked = $context.TenantIdMasked; SubscriptionIdMasked = $context.SubscriptionIdMasked; SubscriptionName = $context.SubscriptionName }) -ConfidenceLevel 'High'))
+    }
+
+    $subscription = $AzureVmHealthResult.AzureContext.Subscription
+    if ($null -ne $subscription) {
+        $status = Get-AzureFindingStatus -Status $subscription.Status
+        $severity = if (-not $subscription.Succeeded) { 'High' } else { Get-DefaultSeverity -Status $status }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureContext' -CheckName 'Azure Subscription Context' -Status $status -Severity $severity -Message ([string]$subscription.Message) -Recommendation 'Use a real subscription ID in a local ignored config file and confirm the signed-in account has access to that subscription.' -Evidence ([pscustomobject]@{ Succeeded = $subscription.Succeeded; SubscriptionIdMasked = $subscription.SubscriptionIdMasked; SubscriptionName = $subscription.SubscriptionName }) -ConfidenceLevel 'High'))
+    }
+
+    $metadataResult = $AzureVmHealthResult.Metadata
+    if ($null -ne $metadataResult) {
+        $status = Get-AzureFindingStatus -Status $metadataResult.Status
+        $message = if ($metadataResult.Message) { [string]$metadataResult.Message } else { 'Azure VM metadata status could not be evaluated.' }
+        $recommendation = if ($status -eq 'Red') {
+            'Confirm the VM exists, the resource group is correct, and the signed-in account has at least Reader access.'
+        }
+        else {
+            'Review Azure VM metadata before maintenance and confirm the VM identity and state are expected.'
+        }
+
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureMetadata' -CheckName 'Azure VM Metadata' -Status $status -Severity (Get-DefaultSeverity -Status $status) -Message $message -Recommendation $recommendation -Evidence $metadataResult.Metadata -ConfidenceLevel 'High'))
+
+        if ($null -ne $metadataResult.Metadata) {
+            $powerState = [string]$metadataResult.Metadata.PowerState
+            $powerStatus = if ([string]::IsNullOrWhiteSpace($powerState)) {
+                'Unknown'
+            }
+            elseif ($powerState -match 'running') {
+                'Green'
+            }
+            else {
+                'Yellow'
+            }
+            $powerMessage = if ([string]::IsNullOrWhiteSpace($powerState)) {
+                'Azure VM power state was not available.'
+            }
+            else {
+                "Azure VM power state is '$powerState'."
+            }
+            $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureMetadata' -CheckName 'Azure VM Power State' -Status $powerStatus -Severity (Get-DefaultSeverity -Status $powerStatus) -Message $powerMessage -Recommendation 'Review stopped, deallocated, or unknown VM power states before maintenance. This tool does not start, stop, or reboot VMs.' -Evidence ([pscustomobject]@{ PowerState = $powerState }) -ConfidenceLevel 'High'))
+
+            $provisioningState = [string]$metadataResult.Metadata.ProvisioningState
+            $provisioningStatus = if ([string]::IsNullOrWhiteSpace($provisioningState)) {
+                'Unknown'
+            }
+            elseif ($provisioningState -eq 'Succeeded') {
+                'Green'
+            }
+            else {
+                'Yellow'
+            }
+            $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureMetadata' -CheckName 'Azure VM Provisioning State' -Status $provisioningStatus -Severity (Get-DefaultSeverity -Status $provisioningStatus) -Message "Azure VM provisioning state is '$provisioningState'." -Recommendation 'Review non-succeeded provisioning states in Azure before maintenance.' -Evidence ([pscustomobject]@{ ProvisioningState = $provisioningState }) -ConfidenceLevel 'High'))
+        }
+    }
+
+    $diskSummary = $AzureVmHealthResult.DiskSummary
+    if ($null -ne $diskSummary) {
+        $status = Get-AzureFindingStatus -Status $diskSummary.Status
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureDisk' -CheckName 'Azure Managed Disk Summary' -Status $status -Severity (Get-DefaultSeverity -Status $status) -Message ([string]$diskSummary.Message) -Recommendation 'Review OS and data disk count, SKU, and size against expected VM design. This tool does not modify disks.' -Evidence ([pscustomobject]@{ OsDiskName = $diskSummary.OsDiskName; OsDiskType = $diskSummary.OsDiskType; DataDiskCount = $diskSummary.DataDiskCount; Disks = @($diskSummary.Disks) }) -ConfidenceLevel 'Medium'))
+    }
+
+    $networkSummary = $AzureVmHealthResult.NetworkSummary
+    if ($null -ne $networkSummary) {
+        $status = Get-AzureFindingStatus -Status $networkSummary.Status
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureNetwork' -CheckName 'Azure Network Interface Summary' -Status $status -Severity (Get-DefaultSeverity -Status $status) -Message ([string]$networkSummary.Message) -Recommendation 'Review NIC count, private IPs, public IP associations, and accelerated networking before maintenance. This tool does not modify network resources.' -Evidence ([pscustomobject]@{ NicCount = $networkSummary.NicCount; PrivateIPs = @($networkSummary.PrivateIPs); PublicIPAssociations = @($networkSummary.PublicIPAssociations); NetworkInterfaceNames = @($networkSummary.NetworkInterfaceNames); AcceleratedNetworking = @($networkSummary.AcceleratedNetworking); Nics = @($networkSummary.Nics) }) -ConfidenceLevel 'Medium'))
+    }
+
+    $guestHealth = $AzureVmHealthResult.GuestHealth
+    if ($null -ne $guestHealth) {
+        $status = Get-AzureFindingStatus -Status $guestHealth.Status
+        $severity = if ($guestHealth.Attempted -and $status -eq 'Unknown') { 'High' } else { Get-DefaultSeverity -Status $status }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureGuestHealth' -CheckName 'Azure VM Run Command Guest Health' -Status $status -Severity $severity -Message ([string]$guestHealth.Message) -Recommendation 'Confirm VM Agent and Run Command permissions if guest health is required. This tool does not reboot VMs, restart services, or remediate guest issues.' -Evidence ([pscustomobject]@{ Attempted = $guestHealth.Attempted; ParsedAvailable = $null -ne $guestHealth.Parsed }) -ConfidenceLevel 'Medium'))
+
+        if ($null -ne $guestHealth.Parsed) {
+            $parsed = $guestHealth.Parsed
+            if ($null -ne $parsed.Cpu) {
+                $cpuStatus = Get-BasicHealthStatus -Value $parsed.Cpu.UsagePercent -WarningThreshold 80 -CriticalThreshold 95 -ComparisonType GreaterThan
+                $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureGuestHealth' -CheckName 'Guest CPU Usage' -Status $cpuStatus -Severity (Get-DefaultSeverity -Status $cpuStatus) -Message "Guest CPU usage is $($parsed.Cpu.UsagePercent)%." -Recommendation 'Review CPU-heavy processes and workload schedule if usage remains elevated.' -Evidence $parsed.Cpu -ConfidenceLevel 'Medium'))
+            }
+
+            if ($null -ne $parsed.Memory) {
+                $memoryStatus = Get-BasicHealthStatus -Value $parsed.Memory.UsedPercent -WarningThreshold 80 -CriticalThreshold 95 -ComparisonType GreaterThan
+                $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureGuestHealth' -CheckName 'Guest Memory Usage' -Status $memoryStatus -Severity (Get-DefaultSeverity -Status $memoryStatus) -Message "Guest memory usage is $($parsed.Memory.UsedPercent)%." -Recommendation 'Review memory pressure and application working sets if usage remains elevated.' -Evidence $parsed.Memory -ConfidenceLevel 'Medium'))
+            }
+
+            foreach ($disk in @($parsed.LogicalDisks)) {
+                if ($null -eq $disk) { continue }
+                $diskStatus = Get-BasicHealthStatus -Value $disk.FreePercent -WarningThreshold 20 -CriticalThreshold 10 -ComparisonType LessThan
+                $diskSeverity = if ($diskStatus -eq 'Red') { 'Critical' } else { Get-DefaultSeverity -Status $diskStatus }
+                $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureGuestHealth' -CheckName "Guest Logical Disk $($disk.DriveLetter)" -Status $diskStatus -Severity $diskSeverity -Message "Guest logical disk $($disk.DriveLetter) free space is $($disk.FreePercent)%." -Recommendation 'Review guest disk free space during an approved maintenance process. This tool does not remove or move data.' -Evidence $disk -ConfidenceLevel 'Medium'))
+            }
+
+            foreach ($service in @($parsed.CriticalServices)) {
+                if ($null -eq $service) { continue }
+                $serviceStatus = if ($service.Status -eq 'Running') { 'Green' } elseif ($service.Status -eq 'Unknown') { 'Unknown' } else { 'Red' }
+                $serviceSeverity = if ($serviceStatus -eq 'Red') { 'Critical' } else { Get-DefaultSeverity -Status $serviceStatus }
+                $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureGuestHealth' -CheckName "Guest Critical Service $($service.ServiceName)" -Status $serviceStatus -Severity $serviceSeverity -Message "Guest service '$($service.ServiceName)' status is '$($service.Status)'." -Recommendation 'Review service state and dependencies before maintenance. This tool does not restart services.' -Evidence $service -ConfidenceLevel 'Medium'))
+            }
+
+            if ($null -ne $parsed.PendingReboot) {
+                $rebootStatus = if ($parsed.PendingReboot.IsPendingReboot) { 'Yellow' } else { 'Green' }
+                $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureGuestHealth' -CheckName 'Guest Pending Reboot' -Status $rebootStatus -Severity (Get-DefaultSeverity -Status $rebootStatus) -Message $(if ($parsed.PendingReboot.IsPendingReboot) { 'Guest pending reboot indicators were found.' } else { 'No common guest pending reboot indicators were found.' }) -Recommendation 'Plan reboot activity through normal change control if pending reboot indicators matter for maintenance.' -Evidence $parsed.PendingReboot -ConfidenceLevel 'Medium'))
+            }
+
+            foreach ($eventCount in @($parsed.RecentEventCounts)) {
+                if ($null -eq $eventCount) { continue }
+                $eventStatus = if ($null -eq $eventCount.ErrorOrCriticalCount) { 'Unknown' } elseif ($eventCount.ErrorOrCriticalCount -gt 0) { 'Yellow' } else { 'Green' }
+                $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'AzureGuestHealth' -CheckName "Guest Event Count $($eventCount.LogName)" -Status $eventStatus -Severity (Get-DefaultSeverity -Status $eventStatus) -Message "Guest $($eventCount.LogName) log has $($eventCount.ErrorOrCriticalCount) Error/Critical event(s) in the last 24 hours." -Recommendation 'Review recent guest event log errors before maintenance if warning counts are present.' -Evidence $eventCount -ConfidenceLevel 'Medium'))
+            }
+        }
+    }
+
+    return @($findings)
+}
+
+function Convert-AzureVmBatchHealthResultToFindings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$AzureVmHealthResults
+    )
+
+    $findings = [System.Collections.Generic.List[object]]::new()
+    foreach ($result in @($AzureVmHealthResults)) {
+        if ($null -eq $result) { continue }
+        foreach ($finding in @(Convert-AzureVmHealthResultToFindings -AzureVmHealthResult $result)) {
+            $findings.Add($finding)
+        }
+    }
+
+    return @($findings)
+}
+
 function Get-OverallHealthScore {
     [CmdletBinding()]
     param(
@@ -487,6 +664,8 @@ Export-ModuleMember -Function @(
     'Convert-LocalHealthResultToFindings',
     'Convert-OnPremHealthResultToFindings',
     'Convert-OnPremBatchHealthResultToFindings',
+    'Convert-AzureVmHealthResultToFindings',
+    'Convert-AzureVmBatchHealthResultToFindings',
     'Get-OverallHealthScore',
     'Get-MaintenanceReadinessStatus'
 )

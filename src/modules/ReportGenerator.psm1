@@ -220,6 +220,11 @@ function Export-HealthHtmlReport {
         Get-CategorySummary -Findings $Findings -Title 'Physical disks' -Filter { $_.Category -eq 'Storage' -and $_.CheckName -like 'Physical Disk*' }
         Get-CategorySummary -Findings $Findings -Title 'Network adapters' -Filter { $_.Category -eq 'Network' }
         Get-CategorySummary -Findings $Findings -Title 'Event log risk indicators' -Filter { $_.Category -like 'EventLog:*' }
+        Get-CategorySummary -Findings $Findings -Title 'Azure context' -Filter { $_.Category -eq 'AzureContext' }
+        Get-CategorySummary -Findings $Findings -Title 'Azure metadata' -Filter { $_.Category -eq 'AzureMetadata' }
+        Get-CategorySummary -Findings $Findings -Title 'Azure disks' -Filter { $_.Category -eq 'AzureDisk' }
+        Get-CategorySummary -Findings $Findings -Title 'Azure network' -Filter { $_.Category -eq 'AzureNetwork' }
+        Get-CategorySummary -Findings $Findings -Title 'Azure guest health' -Filter { $_.Category -eq 'AzureGuestHealth' }
     )
 
     $cardHtml = ($summaryCards | ForEach-Object {

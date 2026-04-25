@@ -71,3 +71,37 @@ Pending reboot findings use safe read-only remote checks where possible. Unknown
 Red findings require administrator review before maintenance, patching, or migration. Yellow findings should be reviewed and either addressed or accepted with a documented reason.
 
 Recommendations in the report are advisory only. Any remediation, reboot, service restart, firewall change, registry change, storage cleanup, or network change requires normal administrator approval and change control before action.
+
+## Using Server Health Sentinel for Azure VM Checks
+
+Run Azure checks before patching windows, platform maintenance, migration planning, or routine Azure VM health reviews when you need a read-only snapshot of VM state and supporting Azure metadata.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Azure -AzureVmsPath ./config/azure-vms.csv
+```
+
+### Pre-Maintenance Azure VM Review
+
+- Confirm `config/azure-vms.csv` includes only the intended maintenance targets.
+- Run `Connect-AzAccount` with an account that has the least privilege needed for the review.
+- Review Azure context, subscription, metadata, power state, disk, network, and guest health findings before approving work.
+
+### Before Patching Azure VMs
+
+- Treat stopped, deallocated, unknown, or non-succeeded provisioning states as review items.
+- Review guest pending reboot, guest disk free space, critical service, CPU, memory, and event count findings when Run Command is available.
+- Keep Run Command failures separate from VM health conclusions; they can indicate VM Agent, permission, policy, or guest OS issues.
+
+### Reviewing Stopped Or Deallocated VMs
+
+Stopped or deallocated VMs are reported as findings and guest health is skipped. This tool does not start, stop, restart, or reboot VMs. Confirm the expected power state with the application owner before maintenance decisions.
+
+### Reviewing Azure Network And Disk Summary
+
+Disk findings summarize OS disk, data disk count, disk SKU, and sizes where metadata is available. Network findings summarize NIC count, private IPs, public IP associations, NIC names, and accelerated networking where `Az.Network` is available.
+
+### Security And Permission Notes
+
+Reader-level access is enough for basic VM metadata checks. VM Run Command requires additional permission to run commands on the VM, and the command used by this tool is read-only. Do not store credentials, tokens, tenant IDs, subscription IDs, or secrets in committed files. Use local ignored inventory files for real Azure details.

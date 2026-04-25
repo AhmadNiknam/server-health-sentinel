@@ -128,6 +128,35 @@ Generated OnPrem reports are written under `reports/`, which is ignored by Git:
 - `reports/onprem-health-findings-[timestamp].csv`
 - `reports/onprem-health-report-[timestamp].html`
 
+## Azure VM Health Check
+
+Azure mode collects read-only Azure VM health signals for VMs listed in `config/azure-vms.csv` or the sample inventory. It checks Az PowerShell availability, current Azure authentication context, subscription context, VM metadata, managed disk summary, network interface summary, and Windows in-guest health through Azure VM Run Command when the VM is running and permissions allow it.
+
+Prerequisites:
+
+- PowerShell 7.
+- `Az.Accounts`.
+- `Az.Compute`.
+- `Az.Network` for network interface detail collection.
+- Run `Connect-AzAccount` before Azure mode; the tool does not prompt for credentials.
+- Reader-level access is enough for metadata checks.
+- VM Run Command requires permission to run commands on the VM.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Azure -AzureVmsPath ./config/azure-vms.sample.csv
+```
+
+Azure mode is read-only. It does not start, stop, restart, resize, move, tag, delete, reboot, or modify Azure VMs or related resources, and it does not restart services inside guest VMs.
+
+If Az modules are missing, the user is not authenticated, the sample subscription ID is still present, or a VM cannot be read, Azure mode generates findings that explain the issue instead of crashing. Generated Azure reports are written under `reports/`, which is ignored by Git:
+
+- `reports/azure-health-raw-[timestamp].json`
+- `reports/azure-health-findings-[timestamp].json`
+- `reports/azure-health-findings-[timestamp].csv`
+- `reports/azure-health-report-[timestamp].html`
+
 ## Professional Reports
 
 Local mode converts raw health collection data into admin-friendly findings and generates professional reports under `reports/`.
