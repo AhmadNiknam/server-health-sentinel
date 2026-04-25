@@ -116,27 +116,31 @@ function New-HealthFinding {
         [Parameter(Mandatory)]
         [string]$CheckName,
 
-        [Parameter(Mandatory)]
         [ValidateSet('Green', 'Yellow', 'Red', 'Unknown')]
-        [string]$Status,
+        [string]$Status = 'Unknown',
 
-        [Parameter(Mandatory)]
         [ValidateSet('Informational', 'Low', 'Medium', 'High', 'Critical', 'Unknown')]
-        [string]$Severity,
+        [string]$Severity = 'Unknown',
 
         [Parameter(Mandatory)]
         [string]$Message,
 
-        [Parameter(Mandatory)]
-        [string]$Recommendation,
+        [string]$Recommendation = 'Review this finding.',
 
         [AllowNull()]
-        [object]$Evidence,
+        [object]$Evidence = '',
 
-        [Parameter(Mandatory)]
         [ValidateSet('Low', 'Medium', 'High', 'Unknown')]
-        [string]$ConfidenceLevel
+        [string]$ConfidenceLevel = 'Unknown'
     )
+
+    if ([string]::IsNullOrWhiteSpace($Recommendation)) {
+        $Recommendation = 'Review this finding.'
+    }
+
+    if ($null -eq $Evidence) {
+        $Evidence = ''
+    }
 
     [pscustomobject]@{
         Timestamp       = Get-Date
@@ -248,26 +252,62 @@ function Get-OverallHealthScore {
         [object[]]$Findings
     )
 
+    if ($null -eq $Findings) {
+        return [pscustomobject]@{
+            OverallStatus = 'Unknown'
+            Score         = 0
+            FindingCount  = 0
+            RedCount      = 0
+            YellowCount   = 0
+            GreenCount    = 0
+            UnknownCount  = 0
+            CriticalCount = 0
+            HighCount     = 0
+            MediumCount   = 0
+            SummaryMessage = 'Health findings could not be evaluated.'
+        }
+    }
+
     $items = @($Findings)
+    if (@($items | Where-Object { $null -eq $_ }).Count -gt 0) {
+        return [pscustomobject]@{
+            OverallStatus = 'Unknown'
+            Score         = 0
+            FindingCount  = $items.Count
+            RedCount      = 0
+            YellowCount   = 0
+            GreenCount    = 0
+            UnknownCount  = $items.Count
+            CriticalCount = 0
+            HighCount     = 0
+            MediumCount   = 0
+            SummaryMessage = 'Health findings could not be evaluated.'
+        }
+    }
+
     $score = 0
     foreach ($finding in $items) {
         $score += switch ($finding.Status) {
             'Green' { 0 }
             'Yellow' { 1 }
+            'Unknown' { 1 }
             'Red' { 3 }
             default { 1 }
         }
     }
 
     $criticalCount = @($items | Where-Object { $_.Severity -eq 'Critical' }).Count
-    $overallStatus = if ($score -eq 0) {
+    $overallStatus = if ($criticalCount -gt 0) {
+        'Red'
+    }
+    elseif ($score -eq 0) {
         'Green'
     }
-    elseif ($score -le 5 -and $criticalCount -eq 0) {
-        'Yellow'
+    elseif ($score -gt 5) {
+        'Red'
     }
     else {
-        'Red'
+        'Yellow'
     }
 
     $summaryMessage = switch ($overallStatus) {
@@ -305,15 +345,15 @@ function Get-MaintenanceReadinessStatus {
         $reasons.Add('One or more Critical severity findings are present.')
     }
 
-    if (@($items | Where-Object { $_.Category -eq 'Storage' -and $_.Status -eq 'Red' }).Count -gt 0) {
+    if (@($items | Where-Object { ($_.Category -eq 'Storage' -or $_.CheckName -like '*Disk*') -and $_.Status -eq 'Red' }).Count -gt 0) {
         $reasons.Add('A Red disk or storage finding is present.')
     }
 
-    if (@($items | Where-Object { $_.Category -eq 'PendingReboot' -and $_.Status -eq 'Red' }).Count -gt 0) {
+    if (@($items | Where-Object { ($_.Category -eq 'PendingReboot' -or $_.CheckName -like '*Pending Reboot*') -and $_.Status -eq 'Red' }).Count -gt 0) {
         $reasons.Add('Pending reboot status is Red.')
     }
 
-    if (@($items | Where-Object { $_.Category -eq 'CriticalService' -and $_.Status -eq 'Red' }).Count -gt 0) {
+    if (@($items | Where-Object { ($_.Category -eq 'CriticalService' -or $_.CheckName -like '*Critical Service*') -and $_.Status -eq 'Red' }).Count -gt 0) {
         $reasons.Add('A critical service finding is Red.')
     }
 
@@ -329,21 +369,15 @@ function Get-MaintenanceReadinessStatus {
         $reasons.Add('One or more High severity findings are present.')
     }
 
-    if (@($items | Where-Object { $_.Category -eq 'PendingReboot' -and $_.Status -eq 'Yellow' }).Count -gt 0) {
+    if (@($items | Where-Object { ($_.Category -eq 'PendingReboot' -or $_.CheckName -like '*Pending Reboot*') -and $_.Status -eq 'Yellow' }).Count -gt 0) {
         $reasons.Add('Pending reboot status is Yellow.')
     }
 
-    $eventLogOccurrenceCount = 0
-    foreach ($finding in @($items | Where-Object { $_.Category -like 'EventLog:*' })) {
-        if ($finding.Evidence.Count) {
-            $eventLogOccurrenceCount += [int]$finding.Evidence.Count
-        }
-    }
-    if ($eventLogOccurrenceCount -ge 10) {
-        $reasons.Add('Event log risk indicator count is high.')
+    if (@($items | Where-Object { $_.Category -like 'EventLog:*' -and $_.Status -ne 'Green' }).Count -gt 1) {
+        $reasons.Add('Multiple event log risk indicators are present.')
     }
 
-    if (@($items | Where-Object { $_.Category -eq 'Storage' -and $_.CheckName -like 'Logical Disk*' -and $_.Status -eq 'Yellow' }).Count -gt 0) {
+    if (@($items | Where-Object { ($_.Category -eq 'Storage' -or $_.CheckName -like '*Disk*') -and $_.Status -eq 'Yellow' }).Count -gt 0) {
         $reasons.Add('Disk free space is Yellow.')
     }
 

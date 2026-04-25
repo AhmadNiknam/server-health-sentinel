@@ -5,7 +5,8 @@ Describe 'ReportGenerator' {
     }
 
     BeforeEach {
-        $script:OutputPath = Join-Path ([System.IO.Path]::GetTempPath()) "server-health-sentinel-tests-$([guid]::NewGuid())"
+        $testRoot = Join-Path $env:TEMP 'ServerHealthSentinelTests'
+        $script:OutputPath = Join-Path $testRoot ([guid]::NewGuid().ToString())
         $null = New-Item -Path $script:OutputPath -ItemType Directory -Force
 
         $script:RawResult = [pscustomobject]@{
@@ -73,37 +74,37 @@ Describe 'ReportGenerator' {
     It 'creates a timestamped report file path with the expected pattern' {
         $path = New-ReportFileName -Prefix 'local-health-report' -Extension 'html' -OutputPath $script:OutputPath
 
-        Split-Path -Parent $path | Should Be $script:OutputPath
-        Split-Path -Leaf $path | Should Match '^local-health-report-\d{8}-\d{6}\.html$'
+        Split-Path -Parent $path | Should -Be $script:OutputPath
+        Split-Path -Leaf $path | Should -Match '^local-health-report-\d{8}-\d{6}\.html$'
     }
 
     It 'exports a JSON health report' {
         $path = Export-HealthJsonReport -RawResult $script:RawResult -Findings $script:Findings -OverallScore $script:OverallScore -MaintenanceReadiness $script:MaintenanceReadiness -OutputPath $script:OutputPath
 
-        Test-Path -LiteralPath $path | Should Be $true
+        Test-Path -LiteralPath $path | Should -Be $true
         $json = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-        $json.ReportType | Should Be 'LocalHealthFindings'
-        $json.Findings.Count | Should Be 2
+        $json.ReportType | Should -Be 'LocalHealthFindings'
+        $json.Findings.Count | Should -Be 2
     }
 
     It 'exports a CSV findings report' {
         $path = Export-HealthCsvReport -Findings $script:Findings -OutputPath $script:OutputPath
 
-        Test-Path -LiteralPath $path | Should Be $true
+        Test-Path -LiteralPath $path | Should -Be $true
         $csv = Import-Csv -LiteralPath $path
-        $csv.Count | Should Be 2
-        (@($csv[0].PSObject.Properties.Name) -contains 'Evidence') | Should Be $true
+        $csv.Count | Should -Be 2
+        (@($csv[0].PSObject.Properties.Name) -contains 'Evidence') | Should -Be $true
     }
 
     It 'exports an HTML report with required sections' {
         $path = Export-HealthHtmlReport -RawResult $script:RawResult -Findings $script:Findings -OverallScore $script:OverallScore -MaintenanceReadiness $script:MaintenanceReadiness -OutputPath $script:OutputPath
 
-        Test-Path -LiteralPath $path | Should Be $true
+        Test-Path -LiteralPath $path | Should -Be $true
         $html = Get-Content -LiteralPath $path -Raw
-        $html | Should Match 'Server Health Sentinel'
-        $html | Should Match 'Executive Summary'
-        $html | Should Match 'Maintenance Readiness'
-        $html | Should Match 'Predictive Maintenance'
-        $html | Should Match 'Findings'
+        $html | Should -Match 'Server Health Sentinel'
+        $html | Should -Match 'Executive Summary'
+        $html | Should -Match 'Maintenance Readiness'
+        $html | Should -Match 'Predictive Maintenance'
+        $html | Should -Match 'Findings'
     }
 }
