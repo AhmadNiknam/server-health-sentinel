@@ -212,11 +212,11 @@ reports/local-health-report-20260424-223500.html
 
 ## Trend History and Predictive Risk
 
-Server Health Sentinel can store lightweight local trend snapshots under `history/` so a current run can be compared with the previous run. The trend snapshot records summary counts, target summaries, category summaries, and finding summaries that help identify increasing or decreasing operational risk indicators over time.
+Server Health Sentinel can store lightweight local trend snapshots under `history/` so a current run can be compared with the previous run of the same mode. Local, OnPrem, Azure, and Hybrid snapshots are matched by mode before comparison, so a Hybrid run is not compared against a Local run. The trend snapshot records summary counts, target summaries, category summaries, and finding summaries that help identify increasing or decreasing operational risk indicators over time.
 
 Trend output uses terms such as `Trend Indicator`, `Failure Risk`, `Early Warning`, `Risk Increasing`, `Risk Stable`, `Risk Decreasing`, and `Confidence Level`. It does not guarantee exact failure dates or exact remaining useful life.
 
-History files are ignored by Git because they may contain real environment details such as server names and operational findings. Only `history/.gitkeep` should be committed.
+History files use names such as `trend-snapshot-local-[timestamp].json` or `trend-snapshot-hybrid-[timestamp].json` and are ignored by Git because they may contain real environment details such as server names and operational findings. Only `history/.gitkeep` should be committed.
 
 Example command:
 

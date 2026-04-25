@@ -85,7 +85,7 @@ function Invoke-TrendAnalytics {
     )
 
     $currentSnapshot = New-TrendSnapshot -Mode $ModeName -RawResults $RawResults -Findings $Findings -OverallScore $OverallScore -MaintenanceReadiness $MaintenanceReadiness
-    $previousSnapshots = @(Get-LatestTrendSnapshots -HistoryPath $HistoryPath -Count 1)
+    $previousSnapshots = @(Get-LatestTrendSnapshots -HistoryPath $HistoryPath -Count 1 -Mode $ModeName)
     $previousSnapshot = if ($previousSnapshots.Count -gt 0) { $previousSnapshots[0] } else { $null }
     $trendComparison = Compare-TrendSnapshots -CurrentSnapshot $currentSnapshot -PreviousSnapshot $previousSnapshot
     $componentRisk = @(Get-ComponentRiskScore -Findings $Findings)
@@ -152,6 +152,7 @@ if ($Mode -eq 'Local') {
     Write-Information "YellowFindings: $($overallScore.YellowCount)" -InformationAction Continue
     Write-Information "TrendSnapshotPath: $($trendAnalytics.SnapshotPath)" -InformationAction Continue
     Write-Information "RiskTrend: $($trendAnalytics.TrendComparison.RiskTrend)" -InformationAction Continue
+    Write-Information "TrendReason: $($trendAnalytics.TrendComparison.SummaryMessage)" -InformationAction Continue
     Write-Information "HealthScoreChange: $($trendAnalytics.TrendComparison.HealthScoreChange)" -InformationAction Continue
     Write-Information "RedFindingChange: $($trendAnalytics.TrendComparison.RedFindingChange)" -InformationAction Continue
     Write-Information "CriticalFindingChange: $($trendAnalytics.TrendComparison.CriticalFindingChange)" -InformationAction Continue
@@ -208,6 +209,7 @@ if ($Mode -eq 'OnPrem') {
     Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
     Write-Information "TrendSnapshotPath: $($trendAnalytics.SnapshotPath)" -InformationAction Continue
     Write-Information "RiskTrend: $($trendAnalytics.TrendComparison.RiskTrend)" -InformationAction Continue
+    Write-Information "TrendReason: $($trendAnalytics.TrendComparison.SummaryMessage)" -InformationAction Continue
     Write-Information "HealthScoreChange: $($trendAnalytics.TrendComparison.HealthScoreChange)" -InformationAction Continue
     Write-Information "RedFindingChange: $($trendAnalytics.TrendComparison.RedFindingChange)" -InformationAction Continue
     Write-Information "CriticalFindingChange: $($trendAnalytics.TrendComparison.CriticalFindingChange)" -InformationAction Continue
@@ -265,6 +267,7 @@ if ($Mode -eq 'Azure') {
     Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
     Write-Information "TrendSnapshotPath: $($trendAnalytics.SnapshotPath)" -InformationAction Continue
     Write-Information "RiskTrend: $($trendAnalytics.TrendComparison.RiskTrend)" -InformationAction Continue
+    Write-Information "TrendReason: $($trendAnalytics.TrendComparison.SummaryMessage)" -InformationAction Continue
     Write-Information "HealthScoreChange: $($trendAnalytics.TrendComparison.HealthScoreChange)" -InformationAction Continue
     Write-Information "RedFindingChange: $($trendAnalytics.TrendComparison.RedFindingChange)" -InformationAction Continue
     Write-Information "CriticalFindingChange: $($trendAnalytics.TrendComparison.CriticalFindingChange)" -InformationAction Continue
@@ -498,6 +501,7 @@ if ($Mode -eq 'Hybrid') {
     Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
     Write-Information "TrendSnapshotPath: $($trendAnalytics.SnapshotPath)" -InformationAction Continue
     Write-Information "RiskTrend: $($trendAnalytics.TrendComparison.RiskTrend)" -InformationAction Continue
+    Write-Information "TrendReason: $($trendAnalytics.TrendComparison.SummaryMessage)" -InformationAction Continue
     Write-Information "HealthScoreChange: $($trendAnalytics.TrendComparison.HealthScoreChange)" -InformationAction Continue
     Write-Information "RedFindingChange: $($trendAnalytics.TrendComparison.RedFindingChange)" -InformationAction Continue
     Write-Information "CriticalFindingChange: $($trendAnalytics.TrendComparison.CriticalFindingChange)" -InformationAction Continue

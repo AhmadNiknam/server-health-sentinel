@@ -89,7 +89,7 @@ Describe 'TrendStore' {
 
         Test-Path -LiteralPath $path | Should -Be $true
         Split-Path -Parent $path | Should -Be $script:HistoryPath
-        Split-Path -Leaf $path | Should -Match '^trend-snapshot-\d{8}-\d{6}-\d{3}\.json$'
+        Split-Path -Leaf $path | Should -Match '^trend-snapshot-local-\d{8}-\d{6}-\d{3}\.json$'
     }
 
     It 'returns latest trend snapshots' {
@@ -105,6 +105,54 @@ Describe 'TrendStore' {
         $snapshots[0].HealthScore | Should -Be 3
     }
 
+    It 'returns only Local snapshots when Mode is Local' {
+        $local = New-TrendSnapshot -Mode 'Local' -RawResults @() -Findings @(New-TestTrendFinding) -OverallScore (New-TestOverallScore -Score 2) -MaintenanceReadiness $script:Readiness
+        $hybrid = New-TrendSnapshot -Mode 'Hybrid' -RawResults @() -Findings @(New-TestTrendFinding -TargetType 'Hybrid') -OverallScore (New-TestOverallScore -Score 5 -RedCount 1 -YellowCount 0) -MaintenanceReadiness $script:Readiness
+        $null = Save-TrendSnapshot -Snapshot $hybrid -HistoryPath $script:HistoryPath
+        Start-Sleep -Milliseconds 20
+        $null = Save-TrendSnapshot -Snapshot $local -HistoryPath $script:HistoryPath
+
+        $snapshots = @(Get-LatestTrendSnapshots -HistoryPath $script:HistoryPath -Count 5 -Mode 'Local')
+
+        $snapshots.Count | Should -Be 1
+        $snapshots[0].Mode | Should -Be 'Local'
+        $snapshots[0].HealthScore | Should -Be 2
+    }
+
+    It 'returns only Hybrid snapshots when Mode is Hybrid' {
+        $local = New-TrendSnapshot -Mode 'Local' -RawResults @() -Findings @(New-TestTrendFinding) -OverallScore (New-TestOverallScore -Score 2) -MaintenanceReadiness $script:Readiness
+        $hybrid = New-TrendSnapshot -Mode 'Hybrid' -RawResults @() -Findings @(New-TestTrendFinding -TargetType 'Hybrid') -OverallScore (New-TestOverallScore -Score 5 -RedCount 1 -YellowCount 0) -MaintenanceReadiness $script:Readiness
+        $null = Save-TrendSnapshot -Snapshot $local -HistoryPath $script:HistoryPath
+        Start-Sleep -Milliseconds 20
+        $null = Save-TrendSnapshot -Snapshot $hybrid -HistoryPath $script:HistoryPath
+
+        $snapshots = @(Get-LatestTrendSnapshots -HistoryPath $script:HistoryPath -Count 5 -Mode 'Hybrid')
+
+        $snapshots.Count | Should -Be 1
+        $snapshots[0].Mode | Should -Be 'Hybrid'
+        $snapshots[0].HealthScore | Should -Be 5
+    }
+
+    It 'returns an empty collection when no same-mode snapshot exists' {
+        $local = New-TrendSnapshot -Mode 'Local' -RawResults @() -Findings @(New-TestTrendFinding) -OverallScore (New-TestOverallScore -Score 2) -MaintenanceReadiness $script:Readiness
+        $null = Save-TrendSnapshot -Snapshot $local -HistoryPath $script:HistoryPath
+
+        $snapshots = @(Get-LatestTrendSnapshots -HistoryPath $script:HistoryPath -Count 1 -Mode 'Hybrid')
+
+        $snapshots.Count | Should -Be 0
+    }
+
+    It 'keeps legacy snapshot filenames readable when filtering by mode' {
+        $legacy = New-TrendSnapshot -Mode 'Local' -RawResults @() -Findings @(New-TestTrendFinding) -OverallScore (New-TestOverallScore -Score 2) -MaintenanceReadiness $script:Readiness
+        $legacyPath = Join-Path $script:HistoryPath 'trend-snapshot-20260425-101500-000.json'
+        $legacy | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $legacyPath -Encoding utf8
+
+        $snapshots = @(Get-LatestTrendSnapshots -HistoryPath $script:HistoryPath -Count 1 -Mode 'Local')
+
+        $snapshots.Count | Should -Be 1
+        $snapshots[0].Mode | Should -Be 'Local'
+    }
+
     It 'returns Unknown when no previous snapshot exists' {
         $current = New-TrendSnapshot -Mode 'Local' -RawResults @() -Findings @(New-TestTrendFinding) -OverallScore (New-TestOverallScore) -MaintenanceReadiness $script:Readiness
 
@@ -112,7 +160,34 @@ Describe 'TrendStore' {
 
         $comparison.HasPreviousSnapshot | Should -Be $false
         $comparison.RiskTrend | Should -Be 'Unknown'
-        $comparison.SummaryMessage | Should -Match 'No previous snapshot'
+        $comparison.SummaryMessage | Should -Be 'No previous snapshot found for mode: Local.'
+    }
+
+    It 'returns Unknown when no previous same-mode snapshot exists' {
+        $local = New-TrendSnapshot -Mode 'Local' -RawResults @() -Findings @(New-TestTrendFinding) -OverallScore (New-TestOverallScore -Score 4 -RedCount 1 -YellowCount 0) -MaintenanceReadiness $script:Readiness
+        $currentHybrid = New-TrendSnapshot -Mode 'Hybrid' -RawResults @() -Findings @(New-TestTrendFinding -TargetType 'Hybrid') -OverallScore (New-TestOverallScore -Score 1) -MaintenanceReadiness $script:Readiness
+        $null = Save-TrendSnapshot -Snapshot $local -HistoryPath $script:HistoryPath
+
+        $previousSnapshots = @(Get-LatestTrendSnapshots -HistoryPath $script:HistoryPath -Count 1 -Mode $currentHybrid.Mode)
+        $previousSnapshot = if ($previousSnapshots.Count -gt 0) { $previousSnapshots[0] } else { $null }
+        $comparison = Compare-TrendSnapshots -CurrentSnapshot $currentHybrid -PreviousSnapshot $previousSnapshot
+
+        $comparison.HasPreviousSnapshot | Should -Be $false
+        $comparison.RiskTrend | Should -Be 'Unknown'
+        $comparison.SummaryMessage | Should -Be 'No previous snapshot found for mode: Hybrid.'
+    }
+
+    It 'does not compare a Hybrid snapshot against a Local snapshot' {
+        $local = New-TrendSnapshot -Mode 'Local' -RawResults @() -Findings @(New-TestTrendFinding) -OverallScore (New-TestOverallScore -Score 8 -RedCount 1 -YellowCount 0 -CriticalCount 1) -MaintenanceReadiness $script:Readiness
+        $currentHybrid = New-TrendSnapshot -Mode 'Hybrid' -RawResults @() -Findings @(New-TestTrendFinding -TargetType 'Hybrid') -OverallScore (New-TestOverallScore -Score 1) -MaintenanceReadiness $script:Readiness
+        $null = Save-TrendSnapshot -Snapshot $local -HistoryPath $script:HistoryPath
+
+        $previousSnapshots = @(Get-LatestTrendSnapshots -HistoryPath $script:HistoryPath -Count 1 -Mode 'Hybrid')
+        $comparison = Compare-TrendSnapshots -CurrentSnapshot $currentHybrid -PreviousSnapshot $previousSnapshots[0]
+
+        $comparison.HasPreviousSnapshot | Should -Be $false
+        $comparison.RiskTrend | Should -Be 'Unknown'
+        $comparison.SummaryMessage | Should -Be 'No previous snapshot found for mode: Hybrid.'
     }
 
     It 'returns Worsening when health score increases' {

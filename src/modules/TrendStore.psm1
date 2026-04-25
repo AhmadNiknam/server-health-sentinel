@@ -186,7 +186,19 @@ function Save-TrendSnapshot {
     }
 
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-    $path = Join-Path $HistoryPath "trend-snapshot-$timestamp.json"
+    $modeSegment = if ($null -ne $Snapshot -and $Snapshot.PSObject.Properties.Name -contains 'Mode' -and -not [string]::IsNullOrWhiteSpace([string]$Snapshot.Mode)) {
+        ([string]$Snapshot.Mode).ToLowerInvariant() -replace '[^a-z0-9-]', ''
+    }
+    else {
+        ''
+    }
+    $fileName = if ([string]::IsNullOrWhiteSpace($modeSegment)) {
+        "trend-snapshot-$timestamp.json"
+    }
+    else {
+        "trend-snapshot-$modeSegment-$timestamp.json"
+    }
+    $path = Join-Path $HistoryPath $fileName
     $Snapshot | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $path -Encoding utf8
     return $path
 }
@@ -196,30 +208,38 @@ function Get-LatestTrendSnapshots {
     param(
         [string]$HistoryPath = './history',
 
-        [int]$Count = 1
+        [int]$Count = 1,
+
+        [string]$Mode
     )
 
-    if (-not (Test-Path -LiteralPath $HistoryPath -PathType Container)) {
+    if ($Count -lt 1 -or -not (Test-Path -LiteralPath $HistoryPath -PathType Container)) {
         return @()
     }
 
     $files = @(
-        Get-ChildItem -LiteralPath $HistoryPath -Filter 'trend-snapshot-*.json' -File -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTimeUtc -Descending |
-            Select-Object -First $Count
+        Get-ChildItem -LiteralPath $HistoryPath -Filter 'trend-snapshot-*.json' -File -ErrorAction SilentlyContinue
     )
 
     $snapshots = [System.Collections.Generic.List[object]]::new()
     foreach ($file in $files) {
         try {
-            $snapshots.Add((Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json))
+            $snapshot = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+            if (-not [string]::IsNullOrWhiteSpace($Mode) -and [string]$snapshot.Mode -ne $Mode) {
+                continue
+            }
+            $snapshots.Add($snapshot)
         }
         catch {
             continue
         }
     }
 
-    return @($snapshots)
+    return @(
+        $snapshots |
+            Sort-Object -Property @{ Expression = { if ($null -ne $_.Timestamp) { [datetime]$_.Timestamp } else { [datetime]::MinValue } } } -Descending |
+            Select-Object -First $Count
+    )
 }
 
 function Compare-TrendSnapshots {
@@ -233,6 +253,13 @@ function Compare-TrendSnapshots {
     )
 
     if ($null -eq $PreviousSnapshot) {
+        $mode = if ($null -ne $CurrentSnapshot -and $CurrentSnapshot.PSObject.Properties.Name -contains 'Mode' -and -not [string]::IsNullOrWhiteSpace([string]$CurrentSnapshot.Mode)) {
+            [string]$CurrentSnapshot.Mode
+        }
+        else {
+            'Unknown'
+        }
+
         return [pscustomobject]@{
             HasPreviousSnapshot       = $false
             PreviousTimestamp         = $null
@@ -245,7 +272,7 @@ function Compare-TrendSnapshots {
             HighFindingChange         = 0
             MaintenanceReadinessChange = 'Unknown'
             RiskTrend                 = 'Unknown'
-            SummaryMessage            = 'Reason: No previous snapshot found.'
+            SummaryMessage            = "No previous snapshot found for mode: $mode."
         }
     }
 
