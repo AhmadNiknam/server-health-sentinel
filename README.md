@@ -83,6 +83,26 @@ To validate the sample configuration files:
 pwsh ./src/main.ps1 -Mode ConfigTest
 ```
 
+## Local Health Check
+
+Local Health Check mode collects a read-only health snapshot from the Windows machine where the script is running. It is intended for quick local triage and baseline reporting without making changes to the system.
+
+It checks CPU usage, memory usage, uptime, configured critical services, pending reboot indicators, fixed logical disks, physical disk health where available, network adapter status, IP configuration, and recent System/Application event log risk indicators.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Local
+```
+
+The raw structured result is saved to:
+
+```text
+reports/local-health-raw.json
+```
+
+This mode is read-only and does not perform remediation.
+
 ## Roadmap Summary
 
 The roadmap starts with local health checks and reporting, then adds predictive risk rules, on-prem remote checks, Azure VM health, hybrid mode, trend history, and optional hardware sensor integrations.
