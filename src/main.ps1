@@ -24,11 +24,12 @@ Import-Module $configLoaderPath -Force
 
 if ($Mode -eq 'Local') {
     $moduleNames = @(
-        'HealthEvaluator.psm1',
         'StorageHealthCollector.psm1',
         'NetworkHealthCollector.psm1',
         'EventLogRiskAnalyzer.psm1',
-        'LocalHealthCollector.psm1'
+        'LocalHealthCollector.psm1',
+        'HealthEvaluator.psm1',
+        'ReportGenerator.psm1'
     )
 
     foreach ($moduleName in $moduleNames) {
@@ -39,34 +40,34 @@ if ($Mode -eq 'Local') {
     $thresholds = Import-HealthThresholds -Path $ThresholdsPath
     $predictiveRules = Import-PredictiveRules -Path $PredictiveRulesPath
     $localHealth = Invoke-LocalHealthCheck -Thresholds $thresholds -PredictiveRules $predictiveRules
+    $findings = @(Convert-LocalHealthResultToFindings -LocalHealthResult $localHealth)
+    $overallScore = Get-OverallHealthScore -Findings $findings
+    $maintenanceReadiness = Get-MaintenanceReadinessStatus -Findings $findings
 
     $reportsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'reports'
     if (-not (Test-Path -LiteralPath $reportsPath -PathType Container)) {
         $null = New-Item -Path $reportsPath -ItemType Directory -Force
     }
 
-    $rawReportPath = Join-Path $reportsPath 'local-health-raw.json'
-    $localHealth | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $rawReportPath -Encoding utf8
-
-    $cpuStatus = $localHealth.OsHealth.Cpu.Status
-    $memoryStatus = $localHealth.OsHealth.Memory.Status
-    $logicalDiskCount = @($localHealth.StorageHealth.LogicalDisks).Count
-    $physicalDiskCount = @($localHealth.StorageHealth.PhysicalDisks | Where-Object { $_.FriendlyName }).Count
-    $physicalDiskSummary = if ($physicalDiskCount -gt 0) { [string]$physicalDiskCount } else { 'Unknown' }
-    $networkAdapterCount = @($localHealth.NetworkHealth.Adapters | Where-Object { $_.Name }).Count
-    $eventLogRiskCount = @($localHealth.EventLogRisk | Where-Object { $_.Status -ne 'Unknown' }).Count
+    $rawReportPath = New-ReportFileName -Prefix 'local-health-raw' -Extension 'json' -OutputPath $reportsPath
+    $localHealth | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $rawReportPath -Encoding utf8
+    $jsonReportPath = Export-HealthJsonReport -RawResult $localHealth -Findings $findings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath
+    $csvReportPath = Export-HealthCsvReport -Findings $findings -OutputPath $reportsPath
+    $htmlReportPath = Export-HealthHtmlReport -RawResult $localHealth -Findings $findings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath
 
     Write-Information 'Server Health Sentinel local health check completed.' -InformationAction Continue
     Write-Information "TargetName: $($localHealth.TargetName)" -InformationAction Continue
     Write-Information "Timestamp: $($localHealth.Timestamp)" -InformationAction Continue
-    Write-Information "CPU status: $cpuStatus" -InformationAction Continue
-    Write-Information "Memory status: $memoryStatus" -InformationAction Continue
-    Write-Information "Logical disk count: $logicalDiskCount" -InformationAction Continue
-    Write-Information "Physical disk count: $physicalDiskSummary" -InformationAction Continue
-    Write-Information "Network adapter count: $networkAdapterCount" -InformationAction Continue
-    Write-Information "Pending reboot status: $($localHealth.PendingReboot.Status)" -InformationAction Continue
-    Write-Information "Event log risk count: $eventLogRiskCount" -InformationAction Continue
-    Write-Information "Raw result saved to: $rawReportPath" -InformationAction Continue
+    Write-Information "OverallStatus: $($overallScore.OverallStatus)" -InformationAction Continue
+    Write-Information "HealthScore: $($overallScore.Score)" -InformationAction Continue
+    Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
+    Write-Information "TotalFindings: $($overallScore.FindingCount)" -InformationAction Continue
+    Write-Information "RedFindings: $($overallScore.RedCount)" -InformationAction Continue
+    Write-Information "YellowFindings: $($overallScore.YellowCount)" -InformationAction Continue
+    Write-Information "RawReportPath: $rawReportPath" -InformationAction Continue
+    Write-Information "HtmlReportPath: $htmlReportPath" -InformationAction Continue
+    Write-Information "CsvReportPath: $csvReportPath" -InformationAction Continue
+    Write-Information "JsonReportPath: $jsonReportPath" -InformationAction Continue
     return
 }
 

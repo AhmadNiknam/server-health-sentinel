@@ -95,13 +95,41 @@ Example command:
 pwsh ./src/main.ps1 -Mode Local
 ```
 
-The raw structured result is saved to:
-
-```text
-reports/local-health-raw.json
-```
+The raw structured result is saved to a timestamped JSON file under `reports/`.
 
 This mode is read-only and does not perform remediation.
+
+## Professional Reports
+
+Local mode converts raw health collection data into admin-friendly findings and generates professional reports under `reports/`.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Local
+```
+
+Generated report files include:
+
+- `reports/local-health-raw-[timestamp].json`: raw read-only collector output.
+- `reports/local-health-findings-[timestamp].json`: findings, overall score, maintenance readiness, and raw result context for automation.
+- `reports/local-health-findings-[timestamp].csv`: flat findings for spreadsheet review, ticket notes, or operational handoff.
+- `reports/local-health-report-[timestamp].html`: standalone browser-readable report with embedded CSS and no external CDN dependencies.
+
+The HTML report includes an executive summary, health summary cards, maintenance readiness, a findings table, and a predictive maintenance / early warning section. Maintenance readiness is reported as `Ready`, `ReviewRequired`, or `NotReady` based on critical findings, storage risk, pending reboot status, critical service status, high severity findings, event log risk volume, and disk free space warnings.
+
+Early warning risk indicators are based on observed signals such as disk/storage warnings, repeated event log patterns, and network adapter instability. They are practical risk indicators only; they do not guarantee exact failure dates or exact remaining useful life.
+
+Security note: generated reports may contain local machine names and operational details. Files generated under `reports/` are ignored by Git and should not be committed.
+
+Example generated paths:
+
+```text
+reports/local-health-raw-20260424-223500.json
+reports/local-health-findings-20260424-223500.json
+reports/local-health-findings-20260424-223500.csv
+reports/local-health-report-20260424-223500.html
+```
 
 ## Roadmap Summary
 
