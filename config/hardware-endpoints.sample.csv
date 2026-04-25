@@ -1,4 +1,4 @@
-Name,Vendor,Endpoint,Protocol,Enabled,Notes
-LAB-HOST-001,Dell,https://idrac-lab-host-001.example.invalid,Redfish,false,Fake sample endpoint
-LAB-HOST-002,HPE,https://ilo-lab-host-002.example.invalid,Redfish,false,Fake sample endpoint
-LAB-HOST-003,Lenovo,https://xclarity-lab-host-003.example.invalid,Redfish,false,Fake sample endpoint
+TargetName,Environment,Vendor,ManagementType,Endpoint,Port,UseSsl,Enabled
+LAB-HOST-01,Lab,Dell,Redfish,https://idrac-lab-host-01.example.local,443,true,false
+LAB-HOST-02,Lab,HPE,Redfish,https://ilo-lab-host-02.example.local,443,true,false
+LAB-HOST-03,Lab,Lenovo,Redfish,https://xclarity-lab-host-03.example.local,443,true,false

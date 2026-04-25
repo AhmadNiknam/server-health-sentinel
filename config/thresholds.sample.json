@@ -1,29 +1,50 @@
 {
-  "os": {
-    "cpuPercentWarning": 80,
-    "cpuPercentCritical": 95,
-    "memoryPercentWarning": 80,
-    "memoryPercentCritical": 95,
-    "minimumUptimeHoursForNotice": 1
+  "cpu": {
+    "warningPercent": 80,
+    "criticalPercent": 95
   },
-  "storage": {
-    "freeSpacePercentWarning": 20,
-    "freeSpacePercentCritical": 10,
-    "freeSpaceGbWarning": 20,
-    "freeSpaceGbCritical": 10
+  "memory": {
+    "warningPercent": 80,
+    "criticalPercent": 95
+  },
+  "logicalDisk": {
+    "warningFreePercent": 20,
+    "criticalFreePercent": 10
+  },
+  "physicalDisk": {
+    "warningHealthStates": [
+      "Warning",
+      "Degraded"
+    ],
+    "criticalHealthStates": [
+      "Critical",
+      "Unhealthy",
+      "Unknown"
+    ]
+  },
+  "uptime": {
+    "warningDays": 180
+  },
+  "eventLogs": {
+    "lookbackHours": 24,
+    "maxEventsPerLog": 100,
+    "monitoredLogs": [
+      "System",
+      "Application"
+    ]
   },
   "network": {
-    "minimumLinkSpeedMbpsWarning": 1000,
-    "flagDisconnectedAdapters": true
+    "minimumLinkSpeedMbps": 1000,
+    "flagDisconnectedAdapters": true,
+    "flagLowSpeedAdapters": true
   },
-  "events": {
-    "lookbackHours": 24,
-    "criticalEventWarningCount": 5,
-    "criticalEventCriticalCount": 20
+  "pendingReboot": {
+    "enabled": true
   },
-  "hardware": {
-    "temperatureCelsiusWarning": 75,
-    "temperatureCelsiusCritical": 85,
-    "enabledByDefault": false
+  "services": {
+    "defaultCriticalServices": [
+      "WinRM",
+      "EventLog"
+    ]
   }
 }

@@ -1,4 +1,4 @@
-Name,ResourceGroup,SubscriptionAlias,ExpectedOsType,Notes
-sample-vm-001,rg-sample-servers,SampleSubscriptionAlias,Windows,Fake sample Azure VM
-sample-vm-002,rg-sample-servers,SampleSubscriptionAlias,Windows,Fake sample Azure VM
-sample-vm-003,rg-sample-dr,SampleSubscriptionAlias,Linux,Fake sample Azure VM
+SubscriptionId,ResourceGroupName,VmName,Environment,Role,Location,ExpectedNicSpeedMbps,Enabled
+00000000-0000-0000-0000-000000000000,rg-lab-monitoring,vm-lab-app-01,Lab,Application,canada-central,1000,true
+00000000-0000-0000-0000-000000000000,rg-lab-monitoring,vm-lab-db-01,Lab,Database,canada-central,1000,true
+00000000-0000-0000-0000-000000000000,rg-lab-monitoring,vm-lab-file-01,Lab,FileServer,canada-central,1000,false

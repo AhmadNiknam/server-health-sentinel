@@ -1,77 +1,81 @@
 {
-  "riskLevels": [
-    "Low",
-    "Medium",
-    "High",
-    "Critical",
-    "Unknown"
-  ],
-  "rules": [
-    {
-      "id": "disk-storage-timeouts",
-      "category": "Disk",
-      "description": "Repeated storage timeout or retry events may indicate increasing disk, controller, or path risk.",
-      "signals": [
-        "Windows Event Log storage timeout events",
-        "Disk warning indicators",
-        "SMART or vendor health warning when available"
+  "rules": {
+    "diskStorageTimeouts": {
+      "ruleId": "disk-storage-timeouts",
+      "category": "Storage",
+      "description": "Repeated storage timeout events may indicate disk, controller, path, or driver risk. This is an early warning signal only, not an exact failure prediction.",
+      "eventIds": [
+        129,
+        153
       ],
-      "threshold": {
-        "eventCount": 3,
-        "lookbackHours": 24
-      },
-      "riskLevel": "High",
-      "confidence": "Medium"
+      "lookbackHours": 24,
+      "mediumThreshold": 2,
+      "highThreshold": 5,
+      "criticalThreshold": 10,
+      "recommendation": "Review System event log details, confirm backups are current, inspect storage controller and disk health, and schedule maintenance if the pattern continues.",
+      "confidenceLevel": "Medium"
     },
-    {
-      "id": "event-log-critical-repeat",
-      "category": "EventLog",
-      "description": "Repeated critical system events may indicate an unstable server component.",
-      "signals": [
-        "System log critical events",
-        "Repeated provider and event ID combinations"
+    "diskRetryEvents": {
+      "ruleId": "disk-retry-events",
+      "category": "Storage",
+      "description": "Repeated disk retry warnings can indicate increasing storage instability. Treat this as a risk indicator rather than a remaining-life estimate.",
+      "eventIds": [
+        7,
+        11,
+        15,
+        51
       ],
-      "threshold": {
-        "eventCount": 5,
-        "lookbackHours": 24
-      },
-      "riskLevel": "Medium",
-      "confidence": "Low"
+      "lookbackHours": 24,
+      "mediumThreshold": 1,
+      "highThreshold": 3,
+      "criticalThreshold": 6,
+      "recommendation": "Check disk, cable, controller, and firmware status; compare with physical disk health signals where available.",
+      "confidenceLevel": "Medium"
     },
-    {
-      "id": "network-link-instability",
+    "fileSystemCorruption": {
+      "ruleId": "file-system-corruption",
+      "category": "Storage",
+      "description": "File system corruption events may indicate storage or OS consistency risk and should be investigated promptly.",
+      "eventIds": [
+        55,
+        98,
+        130
+      ],
+      "lookbackHours": 168,
+      "mediumThreshold": 1,
+      "highThreshold": 2,
+      "criticalThreshold": 4,
+      "recommendation": "Verify backups, review disk and volume health, and plan a maintenance window for deeper file system checks if needed.",
+      "confidenceLevel": "Medium"
+    },
+    "networkLinkIssues": {
+      "ruleId": "network-link-issues",
       "category": "Network",
-      "description": "Repeated link down/up events or lower-than-expected link speed may indicate cable, switch port, driver, or NIC risk.",
-      "signals": [
-        "NIC link flap events",
-        "Link speed below expected value",
-        "Disconnected adapter state"
+      "description": "Repeated link state changes or low link speed can indicate NIC, cable, switch port, driver, or configuration risk.",
+      "eventIds": [
+        27,
+        32,
+        4201,
+        10400
       ],
-      "threshold": {
-        "linkFlapCount": 3,
-        "lookbackHours": 24
-      },
-      "riskLevel": "Medium",
-      "confidence": "Medium"
+      "lookbackHours": 24,
+      "mediumThreshold": 2,
+      "highThreshold": 5,
+      "criticalThreshold": 10,
+      "recommendation": "Check adapter status, negotiated speed, cabling, switch port errors, and recent driver or firmware changes.",
+      "confidenceLevel": "Medium"
     },
-    {
-      "id": "hardware-sensor-warning",
-      "category": "HardwareSensor",
-      "description": "Hardware management status of Warning or Critical may indicate component risk.",
-      "signals": [
-        "Power supply warning",
-        "Fan warning",
-        "Temperature threshold warning",
-        "RAID or controller warning where available"
-      ],
-      "threshold": {
-        "sensorStatus": [
-          "Warning",
-          "Critical"
-        ]
-      },
-      "riskLevel": "High",
-      "confidence": "Medium"
+    "hardwareSensorWarnings": {
+      "ruleId": "hardware-sensor-warnings",
+      "category": "Hardware",
+      "description": "Hardware sensor warnings from management interfaces may indicate component risk. Optional hardware integration is disabled by default in sample configs.",
+      "eventIds": [],
+      "lookbackHours": 24,
+      "mediumThreshold": 1,
+      "highThreshold": 2,
+      "criticalThreshold": 4,
+      "recommendation": "Review the vendor management console for power, fan, thermal, memory, and storage controller alerts before planning maintenance.",
+      "confidenceLevel": "Low"
     }
-  ]
+  }
 }

@@ -65,6 +65,24 @@ Server Health Sentinel is read-only by default. It must not remediate issues, re
 
 Do not commit credentials, secrets, tokens, tenant IDs, subscription IDs, or real server names. Only sample configuration files belong in source control.
 
+## Configuration
+
+The `config/*.sample.*` files are safe examples with fake lab values. Real local configuration files should be created by copying the samples and then editing the copies for your environment:
+
+- Copy `config/servers.sample.csv` to `config/servers.csv`.
+- Copy `config/azure-vms.sample.csv` to `config/azure-vms.csv`.
+- Copy `config/hardware-endpoints.sample.csv` to `config/hardware-endpoints.csv`.
+- Copy `config/thresholds.sample.json` to `config/thresholds.json`.
+- Copy `config/predictive-rules.sample.json` to `config/predictive-rules.json`.
+
+Real config files are ignored by Git. Keep only sample config files in source control, and do not store credentials, secrets, tokens, tenant IDs, subscription IDs, or other sensitive values in any config file.
+
+To validate the sample configuration files:
+
+```powershell
+pwsh ./src/main.ps1 -Mode ConfigTest
+```
+
 ## Roadmap Summary
 
 The roadmap starts with local health checks and reporting, then adds predictive risk rules, on-prem remote checks, Azure VM health, hybrid mode, trend history, and optional hardware sensor integrations.
