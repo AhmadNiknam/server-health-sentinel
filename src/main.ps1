@@ -16,11 +16,47 @@ param(
     [string]$AzureVmsPath = './config/azure-vms.sample.csv',
     [string]$HardwareEndpointsPath = './config/hardware-endpoints.sample.csv',
     [string]$ThresholdsPath = './config/thresholds.sample.json',
-    [string]$PredictiveRulesPath = './config/predictive-rules.sample.json'
+    [string]$PredictiveRulesPath = './config/predictive-rules.sample.json',
+
+    [switch]$IncludeLocal
 )
 
 $configLoaderPath = Join-Path $PSScriptRoot 'modules/ConfigLoader.psm1'
 Import-Module $configLoaderPath -Force
+
+function New-HybridExecutionFinding {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModeName,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Yellow', 'Red')]
+        [string]$Status,
+
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [Parameter(Mandatory)]
+        [string]$Recommendation,
+
+        [AllowNull()]
+        [object]$Evidence = ''
+    )
+
+    $severity = if ($Status -eq 'Red') { 'High' } else { 'Medium' }
+    New-HealthFinding `
+        -TargetName $ModeName `
+        -TargetType 'HybridMode' `
+        -Category 'Execution' `
+        -CheckName "$ModeName Mode Execution" `
+        -Status $Status `
+        -Severity $severity `
+        -Message $Message `
+        -Recommendation $Recommendation `
+        -Evidence $Evidence `
+        -ConfidenceLevel 'High'
+}
 
 if ($Mode -eq 'Local') {
     $moduleNames = @(
@@ -156,6 +192,229 @@ if ($Mode -eq 'Azure') {
     Write-Information "RedFindings: $($overallScore.RedCount)" -InformationAction Continue
     Write-Information "YellowFindings: $($overallScore.YellowCount)" -InformationAction Continue
     Write-Information "OverallStatus: $($overallScore.OverallStatus)" -InformationAction Continue
+    Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
+    Write-Information "HtmlReportPath: $htmlReportPath" -InformationAction Continue
+    Write-Information "CsvReportPath: $csvReportPath" -InformationAction Continue
+    Write-Information "JsonReportPath: $jsonReportPath" -InformationAction Continue
+    Write-Information "RawReportPath: $rawReportPath" -InformationAction Continue
+    return
+}
+
+if ($Mode -eq 'Hybrid') {
+    $moduleNames = @(
+        'StorageHealthCollector.psm1',
+        'NetworkHealthCollector.psm1',
+        'EventLogRiskAnalyzer.psm1',
+        'LocalHealthCollector.psm1',
+        'OnPremHealthCollector.psm1',
+        'AzureVmHealthCollector.psm1',
+        'HealthEvaluator.psm1',
+        'ReportGenerator.psm1'
+    )
+
+    foreach ($moduleName in $moduleNames) {
+        $modulePath = Join-Path $PSScriptRoot "modules/$moduleName"
+        Import-Module $modulePath -Force
+    }
+
+    $thresholds = Import-HealthThresholds -Path $ThresholdsPath
+    $predictiveRules = Import-PredictiveRules -Path $PredictiveRulesPath
+
+    $allRawResults = [System.Collections.Generic.List[object]]::new()
+    $allFindings = [System.Collections.Generic.List[object]]::new()
+    $modeSummaries = [System.Collections.Generic.List[object]]::new()
+
+    $localTargetCount = 0
+    $onPremTargetCount = 0
+    $azureVmTargetCount = 0
+
+    if ($IncludeLocal.IsPresent) {
+        try {
+            $localHealth = Invoke-LocalHealthCheck -Thresholds $thresholds -PredictiveRules $predictiveRules
+            $localFindings = @(Convert-LocalHealthResultToFindings -LocalHealthResult $localHealth)
+            $allRawResults.Add($localHealth)
+            foreach ($finding in $localFindings) { $allFindings.Add($finding) }
+            $localTargetCount = 1
+            $modeSummaries.Add([pscustomobject]@{
+                    Mode         = 'Local'
+                    Status       = 'Completed'
+                    Targets      = $localTargetCount
+                    FindingCount = $localFindings.Count
+                    Message      = 'Local health check completed.'
+                })
+        }
+        catch {
+            $finding = New-HybridExecutionFinding `
+                -ModeName 'Local' `
+                -Status 'Red' `
+                -Message "Hybrid Local mode failed: $($_.Exception.Message)" `
+                -Recommendation 'Review local collector prerequisites and run Local mode separately for focused troubleshooting.' `
+                -Evidence ([pscustomobject]@{ Mode = 'Local'; ErrorType = $_.Exception.GetType().FullName })
+            $allFindings.Add($finding)
+            $modeSummaries.Add([pscustomobject]@{
+                    Mode         = 'Local'
+                    Status       = 'Failed'
+                    Targets      = 0
+                    FindingCount = 1
+                    Message      = $finding.Message
+                })
+        }
+    }
+    else {
+        $modeSummaries.Add([pscustomobject]@{
+                Mode         = 'Local'
+                Status       = 'Skipped'
+                Targets      = 0
+                FindingCount = 0
+                Message      = 'Local health check was skipped because -IncludeLocal was not provided.'
+            })
+    }
+
+    if (Test-Path -LiteralPath $ServersPath -PathType Leaf) {
+        try {
+            $serverInventory = @(Import-ServerInventory -Path $ServersPath)
+            $onPremHealthResults = @(Invoke-OnPremHealthCheckBatch -ServerInventory $serverInventory -Thresholds $thresholds)
+            $onPremFindings = @(Convert-OnPremBatchHealthResultToFindings -OnPremHealthResults $onPremHealthResults)
+            foreach ($result in $onPremHealthResults) { $allRawResults.Add($result) }
+            foreach ($finding in $onPremFindings) { $allFindings.Add($finding) }
+            $onPremTargetCount = $onPremHealthResults.Count
+            $modeSummaries.Add([pscustomobject]@{
+                    Mode         = 'OnPrem'
+                    Status       = 'Completed'
+                    Targets      = $onPremTargetCount
+                    FindingCount = $onPremFindings.Count
+                    Message      = 'OnPrem health check batch completed.'
+                })
+        }
+        catch {
+            $finding = New-HybridExecutionFinding `
+                -ModeName 'OnPrem' `
+                -Status 'Red' `
+                -Message "Hybrid OnPrem mode failed: $($_.Exception.Message)" `
+                -Recommendation 'Review the server inventory path, CSV columns, DNS, network connectivity, and WinRM/CIM access, then run OnPrem mode separately if needed.' `
+                -Evidence ([pscustomobject]@{ Mode = 'OnPrem'; ServersPath = $ServersPath; ErrorType = $_.Exception.GetType().FullName })
+            $allFindings.Add($finding)
+            $modeSummaries.Add([pscustomobject]@{
+                    Mode         = 'OnPrem'
+                    Status       = 'Failed'
+                    Targets      = 0
+                    FindingCount = 1
+                    Message      = $finding.Message
+                })
+        }
+    }
+    else {
+        $finding = New-HybridExecutionFinding `
+            -ModeName 'OnPrem' `
+            -Status 'Yellow' `
+            -Message "Hybrid OnPrem mode was skipped because the server inventory file was not found: $ServersPath" `
+            -Recommendation 'Provide a valid -ServersPath file to include on-prem servers in the Hybrid run.' `
+            -Evidence ([pscustomobject]@{ Mode = 'OnPrem'; ServersPath = $ServersPath })
+        $allFindings.Add($finding)
+        $modeSummaries.Add([pscustomobject]@{
+                Mode         = 'OnPrem'
+                Status       = 'Skipped'
+                Targets      = 0
+                FindingCount = 1
+                Message      = $finding.Message
+            })
+    }
+
+    if (Test-Path -LiteralPath $AzureVmsPath -PathType Leaf) {
+        try {
+            $azureVmInventory = @(Import-AzureVmInventory -Path $AzureVmsPath)
+            $azureHealthResults = @(Invoke-AzureVmHealthCheckBatch -AzureVmInventory $azureVmInventory -Thresholds $thresholds -PredictiveRules $predictiveRules)
+            $azureFindings = @(Convert-AzureVmBatchHealthResultToFindings -AzureVmHealthResults $azureHealthResults)
+            foreach ($result in $azureHealthResults) { $allRawResults.Add($result) }
+            foreach ($finding in $azureFindings) { $allFindings.Add($finding) }
+            $azureVmTargetCount = $azureHealthResults.Count
+            $modeSummaries.Add([pscustomobject]@{
+                    Mode         = 'Azure'
+                    Status       = 'Completed'
+                    Targets      = $azureVmTargetCount
+                    FindingCount = $azureFindings.Count
+                    Message      = 'Azure VM health check batch completed.'
+                })
+        }
+        catch {
+            $finding = New-HybridExecutionFinding `
+                -ModeName 'Azure' `
+                -Status 'Red' `
+                -Message "Hybrid Azure mode failed: $($_.Exception.Message)" `
+                -Recommendation 'Review the Azure VM inventory path, CSV columns, Az module availability, authentication context, and read-only access, then run Azure mode separately if needed.' `
+                -Evidence ([pscustomobject]@{ Mode = 'Azure'; AzureVmsPath = $AzureVmsPath; ErrorType = $_.Exception.GetType().FullName })
+            $allFindings.Add($finding)
+            $modeSummaries.Add([pscustomobject]@{
+                    Mode         = 'Azure'
+                    Status       = 'Failed'
+                    Targets      = 0
+                    FindingCount = 1
+                    Message      = $finding.Message
+                })
+        }
+    }
+    else {
+        $finding = New-HybridExecutionFinding `
+            -ModeName 'Azure' `
+            -Status 'Yellow' `
+            -Message "Hybrid Azure mode was skipped because the Azure VM inventory file was not found: $AzureVmsPath" `
+            -Recommendation 'Provide a valid -AzureVmsPath file to include Azure VMs in the Hybrid run.' `
+            -Evidence ([pscustomobject]@{ Mode = 'Azure'; AzureVmsPath = $AzureVmsPath })
+        $allFindings.Add($finding)
+        $modeSummaries.Add([pscustomobject]@{
+                Mode         = 'Azure'
+                Status       = 'Skipped'
+                Targets      = 0
+                FindingCount = 1
+                Message      = $finding.Message
+            })
+    }
+
+    $combinedFindings = @($allFindings)
+    $overallScore = Get-OverallHealthScore -Findings $combinedFindings
+    $maintenanceReadiness = Get-MaintenanceReadinessStatus -Findings $combinedFindings
+    $totalTargetsChecked = $localTargetCount + $onPremTargetCount + $azureVmTargetCount
+
+    $hybridRawResult = [pscustomobject]@{
+        Mode                = 'Hybrid'
+        Timestamp           = Get-Date
+        IncludeLocal        = [bool]$IncludeLocal.IsPresent
+        TotalTargetsChecked = $totalTargetsChecked
+        LocalTargets        = $localTargetCount
+        OnPremTargets       = $onPremTargetCount
+        AzureVmTargets      = $azureVmTargetCount
+        ModeSummaries       = @($modeSummaries)
+        Results             = @($allRawResults)
+    }
+
+    $reportsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'reports'
+    if (-not (Test-Path -LiteralPath $reportsPath -PathType Container)) {
+        $null = New-Item -Path $reportsPath -ItemType Directory -Force
+    }
+
+    $rawReportPath = New-ReportFileName -Prefix 'hybrid-health-raw' -Extension 'json' -OutputPath $reportsPath
+    $hybridRawResult | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath $rawReportPath -Encoding utf8
+    $jsonReportPath = Export-HealthJsonReport -RawResult $hybridRawResult -Findings $combinedFindings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath -Prefix 'hybrid-health-findings' -ReportType 'HybridHealthFindings'
+    $csvReportPath = Export-HealthCsvReport -Findings $combinedFindings -OutputPath $reportsPath -Prefix 'hybrid-health-findings'
+    $htmlReportPath = Export-HealthHtmlReport -RawResult $hybridRawResult -Findings $combinedFindings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath -Prefix 'hybrid-health-report' -ReportTitle 'Hybrid Health Report'
+
+    Write-Information 'Server Health Sentinel hybrid health check completed.' -InformationAction Continue
+    Write-Information 'Mode: Hybrid' -InformationAction Continue
+    Write-Information "LocalIncluded: $([bool]$IncludeLocal.IsPresent)" -InformationAction Continue
+    Write-Information "TotalTargetsChecked: $totalTargetsChecked" -InformationAction Continue
+    Write-Information "LocalTargets: $localTargetCount" -InformationAction Continue
+    Write-Information "OnPremTargets: $onPremTargetCount" -InformationAction Continue
+    Write-Information "AzureVmTargets: $azureVmTargetCount" -InformationAction Continue
+    Write-Information "TotalFindings: $($overallScore.FindingCount)" -InformationAction Continue
+    Write-Information "GreenFindings: $($overallScore.GreenCount)" -InformationAction Continue
+    Write-Information "YellowFindings: $($overallScore.YellowCount)" -InformationAction Continue
+    Write-Information "RedFindings: $($overallScore.RedCount)" -InformationAction Continue
+    Write-Information "UnknownFindings: $($overallScore.UnknownCount)" -InformationAction Continue
+    Write-Information "CriticalFindings: $($overallScore.CriticalCount)" -InformationAction Continue
+    Write-Information "HighFindings: $($overallScore.HighCount)" -InformationAction Continue
+    Write-Information "MediumFindings: $($overallScore.MediumCount)" -InformationAction Continue
+    Write-Information "OverallStatus: $($overallScore.OverallStatus)" -InformationAction Continue
+    Write-Information "HealthScore: $($overallScore.Score)" -InformationAction Continue
     Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
     Write-Information "HtmlReportPath: $htmlReportPath" -InformationAction Continue
     Write-Information "CsvReportPath: $csvReportPath" -InformationAction Continue

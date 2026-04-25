@@ -9,12 +9,14 @@ Describe 'HealthEvaluator' {
                 [string]$CheckName = 'CPU Usage',
                 [string]$Status = 'Green',
                 [string]$Severity = 'Informational',
+                [string]$TargetName = 'TEST-SERVER',
+                [string]$TargetType = 'Local',
                 [object]$Evidence = ''
             )
 
             New-HealthFinding `
-                -TargetName 'TEST-SERVER' `
-                -TargetType 'Local' `
+                -TargetName $TargetName `
+                -TargetType $TargetType `
                 -Category $Category `
                 -CheckName $CheckName `
                 -Status $Status `
@@ -300,6 +302,32 @@ Describe 'HealthEvaluator' {
 
         $score.OverallStatus | Should -Be 'Red'
         $score.CriticalCount | Should -Be 1
+    }
+
+    It 'scores combined Local OnPrem and Azure findings with all severity counts' {
+        $findings = @(
+            New-TestFinding -TargetName 'LOCALHOST' -TargetType 'Local' -Category 'CPU' -CheckName 'CPU Usage' -Status 'Green' -Severity 'Informational'
+            New-TestFinding -TargetName 'LAB-FAKE-01' -TargetType 'OnPrem' -Category 'Connectivity' -CheckName 'Server Unreachable' -Status 'Red' -Severity 'Critical'
+            New-TestFinding -TargetName 'AZ-VM-01' -TargetType 'AzureVM' -Category 'AzureContext' -CheckName 'Azure Authentication Context' -Status 'Unknown' -Severity 'High'
+            New-TestFinding -TargetName 'AZ-VM-01' -TargetType 'AzureVM' -Category 'AzureGuestHealth' -CheckName 'Guest Event Count System' -Status 'Yellow' -Severity 'Medium'
+            New-TestFinding -TargetName 'Hybrid' -TargetType 'HybridMode' -Category 'Execution' -CheckName 'OnPrem Mode Execution' -Status 'Yellow' -Severity 'Low'
+        )
+
+        $score = Get-OverallHealthScore -Findings $findings
+        $readiness = Get-MaintenanceReadinessStatus -Findings $findings
+
+        $score.OverallStatus | Should -Be 'Red'
+        $score.FindingCount | Should -Be 5
+        $score.RedCount | Should -Be 1
+        $score.YellowCount | Should -Be 2
+        $score.GreenCount | Should -Be 1
+        $score.UnknownCount | Should -Be 1
+        $score.CriticalCount | Should -Be 1
+        $score.HighCount | Should -Be 1
+        $score.MediumCount | Should -Be 1
+        $score.LowCount | Should -Be 1
+        $score.InformationalCount | Should -Be 1
+        $readiness.ReadinessStatus | Should -Be 'NotReady'
     }
 
     It 'returns Ready when there are no maintenance blockers' {

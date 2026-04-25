@@ -56,11 +56,46 @@ Azure findings explain missing prerequisites and access issues:
 
 Azure mode is read-only. It does not start, stop, restart, resize, move, tag, delete, reboot, or modify Azure resources, and it does not restart services inside VMs.
 
-## Planned Hybrid Mode
+## Hybrid Mode
 
 ```powershell
-pwsh ./src/main.ps1 -Mode Hybrid
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -ServersPath ./config/servers.sample.csv -AzureVmsPath ./config/azure-vms.sample.csv
 ```
+
+### Configuration Preparation
+
+Copy sample inventory files to local ignored files before using real infrastructure:
+
+```powershell
+Copy-Item ./config/servers.sample.csv ./config/servers.csv
+Copy-Item ./config/azure-vms.sample.csv ./config/azure-vms.csv
+Copy-Item ./config/thresholds.sample.json ./config/thresholds.json
+Copy-Item ./config/predictive-rules.sample.json ./config/predictive-rules.json
+```
+
+Edit the local copies for your environment. Do not commit real server names, tenant IDs, subscription IDs, credentials, tokens, or generated reports.
+
+### Running Hybrid Mode
+
+Use `-IncludeLocal` when the workstation or server running the script should be part of the combined report:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -ServersPath ./config/servers.csv -AzureVmsPath ./config/azure-vms.csv -ThresholdsPath ./config/thresholds.json -PredictiveRulesPath ./config/predictive-rules.json
+```
+
+Hybrid mode combines Local, OnPrem, and Azure VM checks. If one source fails or a sample inventory points to fake targets, the run continues and records a structured finding for that mode.
+
+### Interpreting The Combined Report
+
+The Hybrid HTML report includes an executive summary, target summary by `TargetType`, maintenance readiness, all findings, and predictive maintenance / early warning indicators. Review the target counts to confirm the expected Local, OnPrem, and Azure VM scope was checked.
+
+### Understanding Readiness Status
+
+`Ready` means no Red or High findings were detected. `ReviewRequired` means warnings, High findings, pending reboot signals, disk warnings, or event log risk patterns need an operator decision. `NotReady` means Critical findings or hard maintenance blockers are present and should be resolved or formally accepted before work begins.
+
+### Understanding Unknown Findings
+
+Unknown findings usually indicate missing visibility rather than confirmed health. Common causes include missing Az modules, no Azure authentication context, fake sample subscription IDs, unreachable on-prem servers, blocked WinRM/CIM, unavailable counters, or permission gaps.
 
 ## Configuration
 

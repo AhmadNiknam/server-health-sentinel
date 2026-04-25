@@ -153,4 +153,98 @@ Describe 'ReportGenerator' {
         $html | Should -Match 'LAB-MOCK-02'
         $html | Should -Match 'OnPrem'
     }
+
+    It 'exports a Hybrid HTML report from mock Local OnPrem and Azure findings' {
+        $rawResult = [pscustomobject]@{
+            Mode                = 'Hybrid'
+            Timestamp           = Get-Date
+            IncludeLocal        = $true
+            TotalTargetsChecked = 3
+            LocalTargets        = 1
+            OnPremTargets       = 1
+            AzureVmTargets      = 1
+            ModeSummaries       = @(
+                [pscustomobject]@{ Mode = 'Local'; Status = 'Completed'; Targets = 1; FindingCount = 1 }
+                [pscustomobject]@{ Mode = 'OnPrem'; Status = 'Completed'; Targets = 1; FindingCount = 1 }
+                [pscustomobject]@{ Mode = 'Azure'; Status = 'Completed'; Targets = 1; FindingCount = 1 }
+            )
+            Results             = @()
+        }
+        $findings = @(
+            [pscustomobject]@{
+                Timestamp       = Get-Date
+                TargetName      = 'LOCALHOST'
+                TargetType      = 'Local'
+                Category        = 'Storage'
+                CheckName       = 'Logical Disk C:'
+                Status          = 'Green'
+                Severity        = 'Informational'
+                Message         = 'Drive C: free space is within threshold.'
+                Recommendation  = 'Continue monitoring.'
+                Evidence        = [pscustomobject]@{ DriveLetter = 'C:'; FreePercent = 45 }
+                ConfidenceLevel = 'High'
+            },
+            [pscustomobject]@{
+                Timestamp       = Get-Date
+                TargetName      = 'LAB-FAKE-01'
+                TargetType      = 'OnPrem'
+                Category        = 'Connectivity'
+                CheckName       = 'Server Unreachable'
+                Status          = 'Red'
+                Severity        = 'Critical'
+                Message         = 'Remote health checks could not be completed.'
+                Recommendation  = 'Review remote management access.'
+                Evidence        = [pscustomobject]@{ CimAvailable = $false }
+                ConfidenceLevel = 'High'
+            },
+            [pscustomobject]@{
+                Timestamp       = Get-Date
+                TargetName      = 'AZ-VM-01'
+                TargetType      = 'AzureVM'
+                Category        = 'AzureGuestHealth'
+                CheckName       = 'Guest Event Count System'
+                Status          = 'Yellow'
+                Severity        = 'Medium'
+                Message         = 'Guest System log has warning events.'
+                Recommendation  = 'Review guest event log errors before maintenance.'
+                Evidence        = [pscustomobject]@{ LogName = 'System'; ErrorOrCriticalCount = 2 }
+                ConfidenceLevel = 'Medium'
+            }
+        )
+        $overallScore = [pscustomobject]@{
+            OverallStatus      = 'Red'
+            Score              = 4
+            FindingCount       = 3
+            RedCount           = 1
+            YellowCount        = 1
+            GreenCount         = 1
+            UnknownCount       = 0
+            CriticalCount      = 1
+            HighCount          = 0
+            MediumCount        = 1
+            LowCount           = 0
+            InformationalCount = 1
+            SummaryMessage     = 'Significant health findings require administrator review before maintenance.'
+        }
+        $maintenanceReadiness = [pscustomobject]@{
+            ReadinessStatus = 'NotReady'
+            Reasons         = @('One or more Critical severity findings are present.')
+            Recommendation  = 'Resolve or formally accept Not Ready findings before starting maintenance.'
+        }
+
+        $path = Export-HealthHtmlReport -RawResult $rawResult -Findings $findings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $script:OutputPath -Prefix 'hybrid-health-report' -ReportTitle 'Hybrid Health Report'
+
+        Test-Path -LiteralPath $path | Should -Be $true
+        Split-Path -Leaf $path | Should -Match '^hybrid-health-report-\d{8}-\d{6}\.html$'
+        $html = Get-Content -LiteralPath $path -Raw
+        $html | Should -Match 'Hybrid Health Report'
+        $html | Should -Match 'Executive Summary'
+        $html | Should -Match 'Target Summary'
+        $html | Should -Match 'Maintenance Readiness'
+        $html | Should -Match 'Predictive Maintenance'
+        $html | Should -Match 'Findings'
+        $html | Should -Match 'Local'
+        $html | Should -Match 'OnPrem'
+        $html | Should -Match 'AzureVM'
+    }
 }

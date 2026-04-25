@@ -157,6 +157,27 @@ If Az modules are missing, the user is not authenticated, the sample subscriptio
 - `reports/azure-health-findings-[timestamp].csv`
 - `reports/azure-health-report-[timestamp].html`
 
+## Hybrid Health Check
+
+Hybrid mode runs Local, OnPrem, and Azure VM health checks in one execution and generates a combined report for cross-environment review. It is useful before patching, migration planning, maintenance windows, and weekly health reviews where administrators need one read-only summary of local, on-prem, and Azure VM risk signals.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -ServersPath ./config/servers.sample.csv -AzureVmsPath ./config/azure-vms.sample.csv
+```
+
+Hybrid mode loads thresholds and predictive rules, optionally includes the local machine when `-IncludeLocal` is provided, runs OnPrem checks when the server inventory exists, and runs Azure VM checks when the Azure VM inventory exists. If one mode fails, the Hybrid run continues and adds an execution finding explaining what failed and what to review.
+
+The sample server and Azure VM values are fake. When you run Hybrid mode with sample files, unreachable on-prem servers and unavailable Azure subscription/context values are reported as findings instead of crashing the tool.
+
+Generated Hybrid reports are written under `reports/`, which is ignored by Git:
+
+- `reports/hybrid-health-raw-[timestamp].json`
+- `reports/hybrid-health-findings-[timestamp].json`
+- `reports/hybrid-health-findings-[timestamp].csv`
+- `reports/hybrid-health-report-[timestamp].html`
+
 ## Professional Reports
 
 Local mode converts raw health collection data into admin-friendly findings and generates professional reports under `reports/`.

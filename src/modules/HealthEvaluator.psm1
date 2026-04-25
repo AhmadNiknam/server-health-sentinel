@@ -526,6 +526,8 @@ function Get-OverallHealthScore {
             CriticalCount = 0
             HighCount     = 0
             MediumCount   = 0
+            LowCount      = 0
+            InformationalCount = 0
             SummaryMessage = 'Health findings could not be evaluated.'
         }
     }
@@ -543,6 +545,8 @@ function Get-OverallHealthScore {
             CriticalCount = 0
             HighCount     = 0
             MediumCount   = 0
+            LowCount      = 0
+            InformationalCount = 0
             SummaryMessage = 'Health findings could not be evaluated.'
         }
     }
@@ -559,7 +563,19 @@ function Get-OverallHealthScore {
     }
 
     $criticalCount = @($items | Where-Object { $_.Severity -eq 'Critical' }).Count
+    $redCount = @($items | Where-Object { $_.Status -eq 'Red' }).Count
+    $yellowCount = @($items | Where-Object { $_.Status -eq 'Yellow' }).Count
+    $greenCount = @($items | Where-Object { $_.Status -eq 'Green' }).Count
+    $unknownCount = @($items | Where-Object { $_.Status -eq 'Unknown' }).Count
+    $highCount = @($items | Where-Object { $_.Severity -eq 'High' }).Count
+    $mediumCount = @($items | Where-Object { $_.Severity -eq 'Medium' }).Count
+    $lowCount = @($items | Where-Object { $_.Severity -eq 'Low' }).Count
+    $informationalCount = @($items | Where-Object { $_.Severity -eq 'Informational' }).Count
+
     $overallStatus = if ($criticalCount -gt 0) {
+        'Red'
+    }
+    elseif ($redCount -gt 0) {
         'Red'
     }
     elseif ($score -eq 0) {
@@ -582,13 +598,15 @@ function Get-OverallHealthScore {
         OverallStatus = $overallStatus
         Score         = $score
         FindingCount  = $items.Count
-        RedCount      = @($items | Where-Object { $_.Status -eq 'Red' }).Count
-        YellowCount   = @($items | Where-Object { $_.Status -eq 'Yellow' }).Count
-        GreenCount    = @($items | Where-Object { $_.Status -eq 'Green' }).Count
-        UnknownCount  = @($items | Where-Object { $_.Status -eq 'Unknown' }).Count
+        RedCount      = $redCount
+        YellowCount   = $yellowCount
+        GreenCount    = $greenCount
+        UnknownCount  = $unknownCount
         CriticalCount = $criticalCount
-        HighCount     = @($items | Where-Object { $_.Severity -eq 'High' }).Count
-        MediumCount   = @($items | Where-Object { $_.Severity -eq 'Medium' }).Count
+        HighCount     = $highCount
+        MediumCount   = $mediumCount
+        LowCount      = $lowCount
+        InformationalCount = $informationalCount
         SummaryMessage = $summaryMessage
     }
 }

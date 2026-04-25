@@ -186,7 +186,9 @@ function Export-HealthHtmlReport {
         [Parameter(Mandatory)]
         [string]$OutputPath,
 
-        [string]$Prefix = 'local-health-report'
+        [string]$Prefix = 'local-health-report',
+
+        [string]$ReportTitle = 'Health Report'
     )
 
     $path = New-ReportFileName -Prefix $Prefix -Extension 'html' -OutputPath $OutputPath
@@ -209,6 +211,17 @@ function Export-HealthHtmlReport {
     $targetName = ConvertTo-HtmlText -Value $(if ($targetNames.Count -le 3) { $targetNames -join ', ' } else { "$($targetNames.Count) targets" })
     $targetType = ConvertTo-HtmlText -Value ($targetTypes -join ', ')
     $runTimestamp = ConvertTo-HtmlText -Value $(if ($rawItems.Count -eq 1) { $rawItems[0].Timestamp } else { Get-Date })
+    $safeReportTitle = ConvertTo-HtmlText -Value $ReportTitle
+
+    $localTargetCount = @($Findings | Where-Object { $_.TargetType -eq 'Local' } | Select-Object -ExpandProperty TargetName -Unique).Count
+    $onPremTargetCount = @($Findings | Where-Object { $_.TargetType -eq 'OnPrem' } | Select-Object -ExpandProperty TargetName -Unique).Count
+    $azureVmTargetCount = @($Findings | Where-Object { $_.TargetType -eq 'AzureVM' } | Select-Object -ExpandProperty TargetName -Unique).Count
+    if ($rawItems.Count -eq 1) {
+        if ($null -ne $rawItems[0].LocalTargets) { $localTargetCount = [int]$rawItems[0].LocalTargets }
+        if ($null -ne $rawItems[0].OnPremTargets) { $onPremTargetCount = [int]$rawItems[0].OnPremTargets }
+        if ($null -ne $rawItems[0].AzureVmTargets) { $azureVmTargetCount = [int]$rawItems[0].AzureVmTargets }
+        if ($null -ne $rawItems[0].TotalTargetsChecked) { $targetCount = [int]$rawItems[0].TotalTargetsChecked }
+    }
 
     $summaryCards = @(
         [pscustomobject]@{ Title = 'Targets checked'; Status = if ($targetCount -gt 0) { 'Green' } else { 'Unknown' }; Count = $targetCount }
@@ -227,6 +240,23 @@ function Export-HealthHtmlReport {
         Get-CategorySummary -Findings $Findings -Title 'Azure guest health' -Filter { $_.Category -eq 'AzureGuestHealth' }
     )
 
+    $targetSummaryRows = (@('Local', 'OnPrem', 'AzureVM', 'HybridMode') | ForEach-Object {
+            $currentTargetType = $_
+            $items = @($Findings | Where-Object { $_.TargetType -eq $currentTargetType })
+            $targets = @($items | Select-Object -ExpandProperty TargetName -Unique)
+            @"
+<tr>
+  <td>$(ConvertTo-HtmlText -Value $currentTargetType)</td>
+  <td>$($targets.Count)</td>
+  <td>$($items.Count)</td>
+  <td>$(@($items | Where-Object { $_.Status -eq 'Red' }).Count)</td>
+  <td>$(@($items | Where-Object { $_.Status -eq 'Yellow' }).Count)</td>
+  <td>$(@($items | Where-Object { $_.Status -eq 'Green' }).Count)</td>
+  <td>$(@($items | Where-Object { $_.Status -eq 'Unknown' }).Count)</td>
+</tr>
+"@
+        }) -join [Environment]::NewLine
+
     $cardHtml = ($summaryCards | ForEach-Object {
             "<div class='card'><div class='card-title'>$(ConvertTo-HtmlText -Value $_.Title)</div><div class='badge $($_.Status.ToLowerInvariant())'>$(ConvertTo-HtmlText -Value $_.Status)</div><div class='muted'>Findings: $($_.Count)</div></div>"
         }) -join [Environment]::NewLine
@@ -240,6 +270,7 @@ function Export-HealthHtmlReport {
             $evidence = ConvertTo-HtmlText -Value $_.Evidence
             @"
 <tr>
+  <td>$(ConvertTo-HtmlText -Value $_.Timestamp)</td>
   <td>$(ConvertTo-HtmlText -Value $_.TargetName)</td>
   <td>$(ConvertTo-HtmlText -Value $_.TargetType)</td>
   <td>$(ConvertTo-HtmlText -Value $_.Category)</td>
@@ -256,9 +287,11 @@ function Export-HealthHtmlReport {
 
     $predictiveFindings = @($Findings | Where-Object {
             ($_.Category -eq 'Storage' -and $_.Status -ne 'Green') -or
+            ($_.Category -eq 'EventLogRisk' -and $_.Status -ne 'Green') -or
             ($_.Category -like 'EventLog:*' -and $_.Status -ne 'Green') -or
             ($_.Category -eq 'Network' -and $_.Status -ne 'Green') -or
-            ($_.Category -like '*Hardware*' -and $_.Status -ne 'Green')
+            ($_.Category -like '*Hardware*' -and $_.Status -ne 'Green') -or
+            ($_.Category -eq 'AzureGuestHealth' -and $_.Status -ne 'Green')
         })
 
     $predictiveHtml = if ($predictiveFindings.Count -gt 0) {
@@ -275,7 +308,7 @@ function Export-HealthHtmlReport {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Server Health Sentinel Report</title>
+  <title>Server Health Sentinel - $safeReportTitle</title>
   <style>
     body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: #f4f6f8; color: #1f2933; }
     header { background: #102a43; color: #fff; padding: 28px 36px; }
@@ -292,6 +325,9 @@ function Export-HealthHtmlReport {
     .yellow { color: #664d03; background: #fff3cd; }
     .red { color: #842029; background: #f8d7da; }
     .unknown { color: #41464b; background: #e2e3e5; }
+    .ready { color: #0f5132; background: #d1e7dd; }
+    .reviewrequired { color: #664d03; background: #fff3cd; }
+    .notready { color: #842029; background: #f8d7da; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th, td { border-bottom: 1px solid #d9e2ec; padding: 10px; text-align: left; vertical-align: top; }
     th { background: #eef2f7; }
@@ -302,6 +338,7 @@ function Export-HealthHtmlReport {
 <body>
   <header>
     <h1>Server Health Sentinel</h1>
+    <h2>$safeReportTitle</h2>
     <div class="meta">Target: $targetName | Type: $targetType | Run timestamp: $runTimestamp</div>
   </header>
   <main>
@@ -309,14 +346,34 @@ function Export-HealthHtmlReport {
       <h2>Executive Summary</h2>
       <div class="grid">
         <div class="card"><div class="card-title">Overall status</div><span class="badge $($OverallScore.OverallStatus.ToLowerInvariant())">$(ConvertTo-HtmlText -Value $OverallScore.OverallStatus)</span></div>
-        <div class="card"><div class="card-title">Score</div>$(ConvertTo-HtmlText -Value $OverallScore.Score)</div>
+        <div class="card"><div class="card-title">Health score</div>$(ConvertTo-HtmlText -Value $OverallScore.Score)</div>
         <div class="card"><div class="card-title">Maintenance readiness</div><span class="badge $($MaintenanceReadiness.ReadinessStatus.ToLowerInvariant())">$(ConvertTo-HtmlText -Value $MaintenanceReadiness.ReadinessStatus)</span></div>
+        <div class="card"><div class="card-title">Total targets</div>$(ConvertTo-HtmlText -Value $targetCount)</div>
+        <div class="card"><div class="card-title">Local targets</div>$(ConvertTo-HtmlText -Value $localTargetCount)</div>
+        <div class="card"><div class="card-title">OnPrem targets</div>$(ConvertTo-HtmlText -Value $onPremTargetCount)</div>
+        <div class="card"><div class="card-title">Azure VM targets</div>$(ConvertTo-HtmlText -Value $azureVmTargetCount)</div>
         <div class="card"><div class="card-title">Total findings</div>$(ConvertTo-HtmlText -Value $OverallScore.FindingCount)</div>
         <div class="card"><div class="card-title">Red findings</div>$(ConvertTo-HtmlText -Value $OverallScore.RedCount)</div>
         <div class="card"><div class="card-title">Yellow findings</div>$(ConvertTo-HtmlText -Value $OverallScore.YellowCount)</div>
+        <div class="card"><div class="card-title">Green findings</div>$(ConvertTo-HtmlText -Value $OverallScore.GreenCount)</div>
         <div class="card"><div class="card-title">Unknown findings</div>$(ConvertTo-HtmlText -Value $OverallScore.UnknownCount)</div>
+        <div class="card"><div class="card-title">Critical findings</div>$(ConvertTo-HtmlText -Value $OverallScore.CriticalCount)</div>
+        <div class="card"><div class="card-title">High findings</div>$(ConvertTo-HtmlText -Value $OverallScore.HighCount)</div>
+        <div class="card"><div class="card-title">Medium findings</div>$(ConvertTo-HtmlText -Value $OverallScore.MediumCount)</div>
       </div>
       <p>$(ConvertTo-HtmlText -Value $OverallScore.SummaryMessage)</p>
+    </section>
+
+    <section>
+      <h2>Target Summary</h2>
+      <table>
+        <thead>
+          <tr><th>TargetType</th><th>Targets</th><th>Findings</th><th>Red</th><th>Yellow</th><th>Green</th><th>Unknown</th></tr>
+        </thead>
+        <tbody>
+          $targetSummaryRows
+        </tbody>
+      </table>
     </section>
 
     <section>
@@ -337,7 +394,7 @@ function Export-HealthHtmlReport {
       <h2>Findings</h2>
       <table>
         <thead>
-          <tr><th>TargetName</th><th>TargetType</th><th>Category</th><th>CheckName</th><th>Status</th><th>Severity</th><th>Message</th><th>Recommendation</th><th>Evidence</th><th>ConfidenceLevel</th></tr>
+          <tr><th>Timestamp</th><th>TargetName</th><th>TargetType</th><th>Category</th><th>CheckName</th><th>Status</th><th>Severity</th><th>Message</th><th>Recommendation</th><th>Evidence</th><th>ConfidenceLevel</th></tr>
         </thead>
         <tbody>
           $findingRows

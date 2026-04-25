@@ -105,3 +105,55 @@ Disk findings summarize OS disk, data disk count, disk SKU, and sizes where meta
 ### Security And Permission Notes
 
 Reader-level access is enough for basic VM metadata checks. VM Run Command requires additional permission to run commands on the VM, and the command used by this tool is read-only. Do not store credentials, tokens, tenant IDs, subscription IDs, or secrets in committed files. Use local ignored inventory files for real Azure details.
+
+## Hybrid Infrastructure Health Review
+
+Use Hybrid mode when one review needs to cover the local machine, on-prem Windows servers, and Azure VMs in a single combined report.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -ServersPath ./config/servers.csv -AzureVmsPath ./config/azure-vms.csv
+```
+
+### Weekly Hybrid Health Review
+
+- Confirm the local server, on-prem inventory, and Azure VM inventory reflect the intended review scope.
+- Review the executive summary for overall status, health score, maintenance readiness, target counts, and finding counts.
+- Compare repeated Red, Yellow, and Unknown findings with monitoring alerts and prior operational notes.
+
+### Pre-Maintenance Review
+
+- Run Hybrid mode before change windows that affect multiple environments.
+- Confirm `MaintenanceReadiness` is acceptable for the planned work.
+- Review execution findings first because they may indicate a whole mode did not run.
+
+### Pre-Patching Review
+
+- Review pending reboot, low disk space, stopped critical service, Azure guest health, and event log risk findings before approving patch activity.
+- Treat `NotReady` as a blocker unless an administrator formally accepts the risk through normal change control.
+
+### Before Migration
+
+- Use Hybrid reports to identify source server readiness issues, Azure access gaps, and cross-environment health risks before migration planning.
+- Keep reports with the migration assessment record according to organizational policy.
+
+### Reviewing Red Findings
+
+Red findings require administrator review before maintenance, patching, or migration. Confirm whether the condition is expected, already tracked, or requires remediation through approved procedures.
+
+### Reviewing Unknown Findings
+
+Unknown findings mean the tool could not evaluate a signal. They do not prove the target is healthy. Common causes include permission gaps, missing modules, blocked network paths, unavailable CIM/WinRM, stopped Azure VM agents, or fake sample inventory values.
+
+### Reviewing Azure Authentication Or Access Issues
+
+Azure context, subscription, metadata, and guest health findings should be reviewed separately. Missing authentication or insufficient access can prevent Azure checks from running even when the VM itself is healthy.
+
+### Reviewing Unreachable On-Prem Servers
+
+Unreachable on-prem servers usually indicate DNS, routing, firewall, WinRM/CIM, permissions, or host availability issues. Investigate reachability with approved administrative tools before drawing health conclusions.
+
+### Action Approval
+
+Recommendations in Hybrid reports are advisory only. Any remediation, reboot, service restart, registry change, disk cleanup, firewall change, Windows setting change, network change, or Azure resource change requires administrator review and approval before action.
