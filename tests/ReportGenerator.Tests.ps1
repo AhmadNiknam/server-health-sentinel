@@ -107,4 +107,50 @@ Describe 'ReportGenerator' {
         $html | Should -Match 'Predictive Maintenance'
         $html | Should -Match 'Findings'
     }
+
+    It 'exports an OnPrem HTML report with target-aware findings' {
+        $rawResults = @(
+            [pscustomobject]@{ TargetName = 'LAB-MOCK-01'; TargetType = 'OnPrem'; Timestamp = Get-Date },
+            [pscustomobject]@{ TargetName = 'LAB-MOCK-02'; TargetType = 'OnPrem'; Timestamp = Get-Date }
+        )
+        $findings = @(
+            [pscustomobject]@{
+                Timestamp       = Get-Date
+                TargetName      = 'LAB-MOCK-01'
+                TargetType      = 'OnPrem'
+                Category        = 'Connectivity'
+                CheckName       = 'Remote Connectivity'
+                Status          = 'Green'
+                Severity        = 'Informational'
+                Message         = 'Remote connectivity is available.'
+                Recommendation  = 'Continue monitoring.'
+                Evidence        = [pscustomobject]@{ CimAvailable = $true }
+                ConfidenceLevel = 'Medium'
+            },
+            [pscustomobject]@{
+                Timestamp       = Get-Date
+                TargetName      = 'LAB-MOCK-02'
+                TargetType      = 'OnPrem'
+                Category        = 'Connectivity'
+                CheckName       = 'Server Unreachable'
+                Status          = 'Red'
+                Severity        = 'Critical'
+                Message         = 'Remote health checks could not be completed.'
+                Recommendation  = 'Review remote management access.'
+                Evidence        = [pscustomobject]@{ CimAvailable = $false }
+                ConfidenceLevel = 'High'
+            }
+        )
+
+        $path = Export-HealthHtmlReport -RawResult $rawResults -Findings $findings -OverallScore $script:OverallScore -MaintenanceReadiness $script:MaintenanceReadiness -OutputPath $script:OutputPath -Prefix 'onprem-health-report'
+
+        Test-Path -LiteralPath $path | Should -Be $true
+        Split-Path -Leaf $path | Should -Match '^onprem-health-report-\d{8}-\d{6}\.html$'
+        $html = Get-Content -LiteralPath $path -Raw
+        $html | Should -Match 'Targets checked'
+        $html | Should -Match 'TargetName'
+        $html | Should -Match 'TargetType'
+        $html | Should -Match 'LAB-MOCK-02'
+        $html | Should -Match 'OnPrem'
+    }
 }

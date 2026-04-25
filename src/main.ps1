@@ -71,6 +71,52 @@ if ($Mode -eq 'Local') {
     return
 }
 
+if ($Mode -eq 'OnPrem') {
+    $moduleNames = @(
+        'OnPremHealthCollector.psm1',
+        'ReportGenerator.psm1',
+        'HealthEvaluator.psm1'
+    )
+
+    foreach ($moduleName in $moduleNames) {
+        $modulePath = Join-Path $PSScriptRoot "modules/$moduleName"
+        Import-Module $modulePath -Force
+    }
+
+    $thresholds = Import-HealthThresholds -Path $ThresholdsPath
+    $serverInventory = @(Import-ServerInventory -Path $ServersPath)
+    $onPremHealthResults = @(Invoke-OnPremHealthCheckBatch -ServerInventory $serverInventory -Thresholds $thresholds)
+    $findings = @(Convert-OnPremBatchHealthResultToFindings -OnPremHealthResults $onPremHealthResults)
+    $overallScore = Get-OverallHealthScore -Findings $findings
+    $maintenanceReadiness = Get-MaintenanceReadinessStatus -Findings $findings
+
+    $reportsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'reports'
+    if (-not (Test-Path -LiteralPath $reportsPath -PathType Container)) {
+        $null = New-Item -Path $reportsPath -ItemType Directory -Force
+    }
+
+    $rawReportPath = New-ReportFileName -Prefix 'onprem-health-raw' -Extension 'json' -OutputPath $reportsPath
+    $onPremHealthResults | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $rawReportPath -Encoding utf8
+    $jsonReportPath = Export-HealthJsonReport -RawResult $onPremHealthResults -Findings $findings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath -Prefix 'onprem-health-findings' -ReportType 'OnPremHealthFindings'
+    $csvReportPath = Export-HealthCsvReport -Findings $findings -OutputPath $reportsPath -Prefix 'onprem-health-findings'
+    $htmlReportPath = Export-HealthHtmlReport -RawResult $onPremHealthResults -Findings $findings -OverallScore $overallScore -MaintenanceReadiness $maintenanceReadiness -OutputPath $reportsPath -Prefix 'onprem-health-report'
+
+    Write-Information 'Server Health Sentinel on-prem health check completed.' -InformationAction Continue
+    Write-Information 'Mode: OnPrem' -InformationAction Continue
+    Write-Information "TotalServersLoaded: $($serverInventory.Count)" -InformationAction Continue
+    Write-Information "TotalServersChecked: $($onPremHealthResults.Count)" -InformationAction Continue
+    Write-Information "TotalFindings: $($overallScore.FindingCount)" -InformationAction Continue
+    Write-Information "RedFindings: $($overallScore.RedCount)" -InformationAction Continue
+    Write-Information "YellowFindings: $($overallScore.YellowCount)" -InformationAction Continue
+    Write-Information "OverallStatus: $($overallScore.OverallStatus)" -InformationAction Continue
+    Write-Information "MaintenanceReadiness: $($maintenanceReadiness.ReadinessStatus)" -InformationAction Continue
+    Write-Information "HtmlReportPath: $htmlReportPath" -InformationAction Continue
+    Write-Information "CsvReportPath: $csvReportPath" -InformationAction Continue
+    Write-Information "JsonReportPath: $jsonReportPath" -InformationAction Continue
+    Write-Information "RawReportPath: $rawReportPath" -InformationAction Continue
+    return
+}
+
 if ($Mode -ne 'ConfigTest') {
     Write-Information 'Mode is planned for a future phase.' -InformationAction Continue
     return

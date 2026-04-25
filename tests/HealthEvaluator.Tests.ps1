@@ -112,6 +112,96 @@ Describe 'HealthEvaluator' {
                 Message         = 'Pending reboot indicators were found.'
             }
         }
+
+        $script:MockUnreachableOnPremResult = [pscustomobject]@{
+            TargetName    = 'LAB-FAKE-01'
+            TargetType    = 'OnPrem'
+            Timestamp     = Get-Date
+            Environment   = 'Lab'
+            Role          = 'Application'
+            Location      = 'Lab'
+            Connectivity  = [pscustomobject]@{
+                ServerName    = 'LAB-FAKE-01'
+                DnsResolved   = $false
+                PingSucceeded = $false
+                CimAvailable  = $false
+                Status        = 'Red'
+                Message       = "Server 'LAB-FAKE-01' is unreachable for remote health collection."
+                Evidence      = [pscustomobject]@{ Dns = 'DNS resolution failed.'; Ping = 'No reply.'; CimOrWsMan = 'CIM failed.' }
+            }
+            OsHealth      = [pscustomobject]@{
+                Cpu              = $null
+                Memory           = $null
+                Uptime           = $null
+                CriticalServices = @()
+            }
+            StorageHealth = [pscustomobject]@{
+                LogicalDisks = @()
+            }
+            NetworkHealth = [pscustomobject]@{
+                Adapters = @()
+            }
+            PendingReboot = [pscustomobject]@{
+                IsPendingReboot = $null
+                Reasons         = @()
+                Status          = 'Unknown'
+                Message         = 'Pending reboot was not checked because the server was unreachable by CIM/WinRM.'
+            }
+            Summary       = [pscustomobject]@{
+                OverallStatus       = 'Red'
+                LogicalDiskCount    = 0
+                NetworkAdapterCount = 0
+                Message             = 'Remote checks were skipped because CIM/WinRM connectivity was unavailable.'
+            }
+        }
+
+        $script:MockReachableOnPremResult = [pscustomobject]@{
+            TargetName    = 'LAB-MOCK-01'
+            TargetType    = 'OnPrem'
+            Timestamp     = Get-Date
+            Environment   = 'Lab'
+            Role          = 'Database'
+            Location      = 'Lab'
+            Connectivity  = [pscustomobject]@{
+                ServerName    = 'LAB-MOCK-01'
+                DnsResolved   = $true
+                PingSucceeded = $false
+                CimAvailable  = $true
+                Status        = 'Yellow'
+                Message       = "Server 'LAB-MOCK-01' has usable CIM/WinRM connectivity, but one basic connectivity signal was unavailable."
+                Evidence      = [pscustomobject]@{ Dns = 'Resolved.'; Ping = 'Blocked.'; CimOrWsMan = 'WinRM responded.' }
+            }
+            OsHealth      = [pscustomobject]@{
+                Cpu              = [pscustomobject]@{ Value = 40; Unit = 'Percent'; Status = 'Green'; Message = 'CPU usage is within threshold.'; Evidence = 'CPU counter' }
+                Memory           = [pscustomobject]@{ Value = 88; Unit = 'Percent'; Status = 'Yellow'; Message = 'Memory usage is above warning threshold.'; Evidence = [pscustomobject]@{ TotalGB = 32; FreeGB = 3.8 } }
+                Uptime           = [pscustomobject]@{ Value = 30; Unit = 'Days'; Status = 'Green'; Message = 'Uptime is within threshold.'; Evidence = [pscustomobject]@{ LastBootTime = Get-Date } }
+                CriticalServices = @(
+                    [pscustomobject]@{ Value = 'Stopped'; Unit = 'ServiceStatus'; Status = 'Red'; Message = "Critical service 'MSSQLSERVER' is Stopped."; Evidence = [pscustomobject]@{ ServiceName = 'MSSQLSERVER'; DisplayName = 'SQL Server'; StartMode = 'Auto' } }
+                )
+            }
+            StorageHealth = [pscustomobject]@{
+                LogicalDisks = @(
+                    [pscustomobject]@{ DriveLetter = 'C:'; VolumeName = 'System'; TotalGB = 100; FreeGB = 35; FreePercent = 35; Status = 'Green'; Message = 'Drive C: free space is within threshold.' }
+                )
+            }
+            NetworkHealth = [pscustomobject]@{
+                Adapters = @(
+                    [pscustomobject]@{ Name = 'Ethernet'; InterfaceDescription = 'Mock Adapter'; Status = 'Connected'; NetConnectionStatus = 2; LinkSpeed = '1000 Mbps'; MacAddress = '00-00-00-00-00-01'; StatusEvaluation = 'Green'; Message = "Network adapter 'Ethernet' is connected." }
+                )
+            }
+            PendingReboot = [pscustomobject]@{
+                IsPendingReboot = $false
+                Reasons         = @()
+                Status          = 'Green'
+                Message         = 'No common pending reboot indicators were found.'
+            }
+            Summary       = [pscustomobject]@{
+                OverallStatus       = 'Red'
+                LogicalDiskCount    = 1
+                NetworkAdapterCount = 1
+                Message             = 'Remote read-only health checks completed.'
+            }
+        }
     }
 
     It 'creates a health finding with the expected object structure and safe defaults' {
@@ -261,5 +351,38 @@ Describe 'HealthEvaluator' {
 
         $eventFindings.Count | Should -Be 2
         $diskEvent.Evidence.Count | Should -Be 2
+    }
+
+    It 'converts an unreachable on-prem server result to Red connectivity findings' {
+        $findings = @(Convert-OnPremHealthResultToFindings -OnPremHealthResult $script:MockUnreachableOnPremResult)
+        $connectivity = $findings | Where-Object { $_.Category -eq 'Connectivity' -and $_.CheckName -eq 'Remote Connectivity' }
+        $unreachable = $findings | Where-Object { $_.Category -eq 'Connectivity' -and $_.CheckName -eq 'Server Unreachable' }
+
+        $connectivity.Status | Should -Be 'Red'
+        $connectivity.Severity | Should -Be 'Critical'
+        $unreachable.Status | Should -Be 'Red'
+        $unreachable.TargetType | Should -Be 'OnPrem'
+    }
+
+    It 'converts on-prem health results into expected finding categories' {
+        $findings = @(Convert-OnPremHealthResultToFindings -OnPremHealthResult $script:MockReachableOnPremResult)
+        $categories = @($findings.Category | Sort-Object -Unique)
+
+        $categories | Should -Contain 'Connectivity'
+        $categories | Should -Contain 'CPU'
+        $categories | Should -Contain 'Memory'
+        $categories | Should -Contain 'Uptime'
+        $categories | Should -Contain 'PendingReboot'
+        $categories | Should -Contain 'Storage'
+        $categories | Should -Contain 'CriticalService'
+        $categories | Should -Contain 'Network'
+        (@($findings | Where-Object { $_.TargetName -eq 'LAB-MOCK-01' }).Count) | Should -BeGreaterThan 0
+    }
+
+    It 'converts an on-prem batch result to a flat findings list' {
+        $findings = @(Convert-OnPremBatchHealthResultToFindings -OnPremHealthResults @($script:MockUnreachableOnPremResult, $script:MockReachableOnPremResult))
+
+        $findings.Count | Should -BeGreaterThan 2
+        @($findings.TargetName | Sort-Object -Unique).Count | Should -Be 2
     }
 }

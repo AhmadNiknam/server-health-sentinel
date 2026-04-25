@@ -245,6 +245,91 @@ function Convert-LocalHealthResultToFindings {
     return @($findings)
 }
 
+function Convert-OnPremHealthResultToFindings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$OnPremHealthResult
+    )
+
+    $targetName = [string]$OnPremHealthResult.TargetName
+    $targetType = if ($OnPremHealthResult.TargetType) { [string]$OnPremHealthResult.TargetType } else { 'OnPrem' }
+    $findings = [System.Collections.Generic.List[object]]::new()
+
+    $connectivity = $OnPremHealthResult.Connectivity
+    if ($null -ne $connectivity) {
+        $connectivitySeverity = if ($connectivity.Status -eq 'Red') { 'Critical' } else { Get-DefaultSeverity -Status $connectivity.Status }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'Connectivity' -CheckName 'Remote Connectivity' -Status $connectivity.Status -Severity $connectivitySeverity -Message $connectivity.Message -Recommendation 'Validate DNS, network routing, firewall rules, and WinRM/CIM access using approved administrative procedures.' -Evidence ([pscustomobject]@{ DnsResolved = $connectivity.DnsResolved; PingSucceeded = $connectivity.PingSucceeded; CimAvailable = $connectivity.CimAvailable; Details = $connectivity.Evidence }) -ConfidenceLevel 'Medium'))
+
+        if (-not $connectivity.CimAvailable -or $connectivity.Status -eq 'Red') {
+            $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'Connectivity' -CheckName 'Server Unreachable' -Status 'Red' -Severity 'Critical' -Message "Remote health checks could not be completed for '$targetName'." -Recommendation 'Investigate reachability and remote management access before relying on this server health snapshot.' -Evidence ([pscustomobject]@{ ConnectivityStatus = $connectivity.Status; Message = $connectivity.Message }) -ConfidenceLevel 'High'))
+        }
+    }
+
+    $cpu = $OnPremHealthResult.OsHealth.Cpu
+    if ($null -ne $cpu) {
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'CPU' -CheckName 'CPU Usage' -Status $cpu.Status -Severity (Get-DefaultSeverity -Status $cpu.Status) -Message $cpu.Message -Recommendation 'Review CPU-heavy processes and scheduled workload patterns if usage remains elevated.' -Evidence ([pscustomobject]@{ Value = $cpu.Value; Unit = $cpu.Unit; Source = $cpu.Evidence }) -ConfidenceLevel 'Medium'))
+    }
+
+    $memory = $OnPremHealthResult.OsHealth.Memory
+    if ($null -ne $memory) {
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'Memory' -CheckName 'Memory Usage' -Status $memory.Status -Severity (Get-DefaultSeverity -Status $memory.Status) -Message $memory.Message -Recommendation 'Review memory pressure, application working sets, and capacity trends if usage remains elevated.' -Evidence ([pscustomobject]@{ Value = $memory.Value; Unit = $memory.Unit; Details = $memory.Evidence }) -ConfidenceLevel 'Medium'))
+    }
+
+    $uptime = $OnPremHealthResult.OsHealth.Uptime
+    if ($null -ne $uptime) {
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'Uptime' -CheckName 'Uptime' -Status $uptime.Status -Severity (Get-DefaultSeverity -Status $uptime.Status) -Message $uptime.Message -Recommendation 'Review uptime against maintenance policy and planned patch cadence.' -Evidence ([pscustomobject]@{ Value = $uptime.Value; Unit = $uptime.Unit; Details = $uptime.Evidence }) -ConfidenceLevel 'Medium'))
+    }
+
+    $pendingReboot = $OnPremHealthResult.PendingReboot
+    if ($null -ne $pendingReboot) {
+        $pendingSeverity = if ($pendingReboot.Status -eq 'Red') { 'Critical' } elseif ($pendingReboot.Status -eq 'Yellow') { 'Medium' } else { Get-DefaultSeverity -Status $pendingReboot.Status }
+        $recommendation = if ($pendingReboot.IsPendingReboot) { 'Plan a controlled maintenance window to complete the pending reboot.' } elseif ($pendingReboot.Status -eq 'Unknown') { 'Confirm pending reboot status through approved administrative tooling if this signal is required for maintenance decisions.' } else { 'No reboot action is indicated by the checked read-only signals.' }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'PendingReboot' -CheckName 'Pending Reboot' -Status $pendingReboot.Status -Severity $pendingSeverity -Message $pendingReboot.Message -Recommendation $recommendation -Evidence ([pscustomobject]@{ IsPendingReboot = $pendingReboot.IsPendingReboot; Reasons = @($pendingReboot.Reasons) }) -ConfidenceLevel 'Medium'))
+    }
+
+    foreach ($disk in @($OnPremHealthResult.StorageHealth.LogicalDisks)) {
+        if ($null -eq $disk) { continue }
+        $checkName = if ($disk.DriveLetter) { "Logical Disk $($disk.DriveLetter)" } else { 'Logical Disk' }
+        $diskSeverity = if ($disk.Status -eq 'Red') { 'Critical' } else { Get-DefaultSeverity -Status $disk.Status }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'Storage' -CheckName $checkName -Status $disk.Status -Severity $diskSeverity -Message $disk.Message -Recommendation 'Review disk free space and remove, archive, or move data during an approved maintenance process if needed.' -Evidence ([pscustomobject]@{ DriveLetter = $disk.DriveLetter; VolumeName = $disk.VolumeName; TotalGB = $disk.TotalGB; FreeGB = $disk.FreeGB; FreePercent = $disk.FreePercent }) -ConfidenceLevel 'High'))
+    }
+
+    foreach ($service in @($OnPremHealthResult.OsHealth.CriticalServices)) {
+        if ($null -eq $service) { continue }
+        $serviceName = if ($service.Evidence.ServiceName) { $service.Evidence.ServiceName } else { 'UnknownService' }
+        $serviceSeverity = if ($service.Status -eq 'Red') { 'Critical' } else { Get-DefaultSeverity -Status $service.Status }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'CriticalService' -CheckName "Critical Service $serviceName" -Status $service.Status -Severity $serviceSeverity -Message $service.Message -Recommendation 'Review the service state and dependencies before maintenance; do not restart services from this report workflow.' -Evidence ([pscustomobject]@{ Value = $service.Value; Unit = $service.Unit; Details = $service.Evidence }) -ConfidenceLevel 'Medium'))
+    }
+
+    foreach ($adapter in @($OnPremHealthResult.NetworkHealth.Adapters)) {
+        if ($null -eq $adapter) { continue }
+        $adapterStatus = if ($adapter.StatusEvaluation) { [string]$adapter.StatusEvaluation } else { 'Unknown' }
+        $checkName = if ($adapter.Name) { "Network Adapter $($adapter.Name)" } else { 'Network Adapter' }
+        $findings.Add((New-HealthFinding -TargetName $targetName -TargetType $targetType -Category 'Network' -CheckName $checkName -Status $adapterStatus -Severity (Get-DefaultSeverity -Status $adapterStatus) -Message $adapter.Message -Recommendation 'Review adapter state, cabling, switch configuration, and expected link speed if network warnings persist.' -Evidence ([pscustomobject]@{ Name = $adapter.Name; InterfaceDescription = $adapter.InterfaceDescription; AdapterStatus = $adapter.Status; NetConnectionStatus = $adapter.NetConnectionStatus; LinkSpeed = $adapter.LinkSpeed; MacAddress = $adapter.MacAddress }) -ConfidenceLevel 'Medium'))
+    }
+
+    return @($findings)
+}
+
+function Convert-OnPremBatchHealthResultToFindings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$OnPremHealthResults
+    )
+
+    $findings = [System.Collections.Generic.List[object]]::new()
+    foreach ($result in @($OnPremHealthResults)) {
+        if ($null -eq $result) { continue }
+        foreach ($finding in @(Convert-OnPremHealthResultToFindings -OnPremHealthResult $result)) {
+            $findings.Add($finding)
+        }
+    }
+
+    return @($findings)
+}
+
 function Get-OverallHealthScore {
     [CmdletBinding()]
     param(
@@ -400,6 +485,8 @@ Export-ModuleMember -Function @(
     'Get-BasicHealthStatus',
     'New-HealthFinding',
     'Convert-LocalHealthResultToFindings',
+    'Convert-OnPremHealthResultToFindings',
+    'Convert-OnPremBatchHealthResultToFindings',
     'Get-OverallHealthScore',
     'Get-MaintenanceReadinessStatus'
 )

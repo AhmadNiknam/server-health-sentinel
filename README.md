@@ -99,6 +99,35 @@ The raw structured result is saved to a timestamped JSON file under `reports/`.
 
 This mode is read-only and does not perform remediation.
 
+## On-Prem Windows Server Health Check
+
+On-Prem mode collects read-only health signals from Windows servers listed in a server inventory CSV. It uses DNS, ICMP where allowed, and WinRM/CIM remote management to check connectivity, CPU, memory, uptime, fixed logical disks, critical services, pending reboot indicators where available, and network adapters.
+
+Prerequisites:
+
+- Network connectivity from the admin workstation to the target servers.
+- DNS resolution for each server name in the inventory.
+- WinRM/CIM remote access enabled and allowed by firewall rules.
+- Appropriate domain or local administrator permissions where the target Windows Server requires them for remote CIM queries.
+- A server inventory based on `config/servers.sample.csv`; keep real server names in local ignored files such as `config/servers.csv`.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode OnPrem -ServersPath ./config/servers.sample.csv
+```
+
+Unreachable servers are reported as findings instead of stopping the run. This is expected when using the sample inventory because the sample server names are fake lab values.
+
+This mode does not modify remote servers. It does not reboot, restart services, change registry values, change disk or network settings, adjust firewall rules, or perform remediation. Credentials are not stored, and the current user context is used unless a future version explicitly adds a credential parameter.
+
+Generated OnPrem reports are written under `reports/`, which is ignored by Git:
+
+- `reports/onprem-health-raw-[timestamp].json`
+- `reports/onprem-health-findings-[timestamp].json`
+- `reports/onprem-health-findings-[timestamp].csv`
+- `reports/onprem-health-report-[timestamp].html`
+
 ## Professional Reports
 
 Local mode converts raw health collection data into admin-friendly findings and generates professional reports under `reports/`.

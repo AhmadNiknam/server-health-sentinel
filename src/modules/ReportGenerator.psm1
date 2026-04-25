@@ -80,12 +80,16 @@ function Export-HealthJsonReport {
         [object]$MaintenanceReadiness,
 
         [Parameter(Mandatory)]
-        [string]$OutputPath
+        [string]$OutputPath,
+
+        [string]$Prefix = 'local-health-findings',
+
+        [string]$ReportType = 'LocalHealthFindings'
     )
 
-    $path = New-ReportFileName -Prefix 'local-health-findings' -Extension 'json' -OutputPath $OutputPath
+    $path = New-ReportFileName -Prefix $Prefix -Extension 'json' -OutputPath $OutputPath
     $report = [pscustomobject]@{
-        ReportType           = 'LocalHealthFindings'
+        ReportType           = $ReportType
         GeneratedAt          = Get-Date
         RawResult            = $RawResult
         Findings             = @($Findings)
@@ -104,10 +108,12 @@ function Export-HealthCsvReport {
         [object[]]$Findings,
 
         [Parameter(Mandatory)]
-        [string]$OutputPath
+        [string]$OutputPath,
+
+        [string]$Prefix = 'local-health-findings'
     )
 
-    $path = New-ReportFileName -Prefix 'local-health-findings' -Extension 'csv' -OutputPath $OutputPath
+    $path = New-ReportFileName -Prefix $Prefix -Extension 'csv' -OutputPath $OutputPath
     @($Findings) | Select-Object `
         Timestamp,
         TargetName,
@@ -178,17 +184,37 @@ function Export-HealthHtmlReport {
         [object]$MaintenanceReadiness,
 
         [Parameter(Mandatory)]
-        [string]$OutputPath
+        [string]$OutputPath,
+
+        [string]$Prefix = 'local-health-report'
     )
 
-    $path = New-ReportFileName -Prefix 'local-health-report' -Extension 'html' -OutputPath $OutputPath
-    $targetName = ConvertTo-HtmlText -Value $RawResult.TargetName
-    $targetType = ConvertTo-HtmlText -Value $RawResult.TargetType
-    $runTimestamp = ConvertTo-HtmlText -Value $RawResult.Timestamp
+    $path = New-ReportFileName -Prefix $Prefix -Extension 'html' -OutputPath $OutputPath
+    $rawItems = @($RawResult)
+    $targetCount = @($Findings | Select-Object -ExpandProperty TargetName -Unique).Count
+    if ($targetCount -eq 0 -and $rawItems.Count -gt 0) {
+        $targetCount = $rawItems.Count
+    }
+
+    $targetNames = @($Findings | Select-Object -ExpandProperty TargetName -Unique | Sort-Object)
+    if ($targetNames.Count -eq 0) {
+        $targetNames = @($rawItems.TargetName | Sort-Object -Unique)
+    }
+
+    $targetTypes = @($Findings | Select-Object -ExpandProperty TargetType -Unique | Sort-Object)
+    if ($targetTypes.Count -eq 0) {
+        $targetTypes = @($rawItems.TargetType | Sort-Object -Unique)
+    }
+
+    $targetName = ConvertTo-HtmlText -Value $(if ($targetNames.Count -le 3) { $targetNames -join ', ' } else { "$($targetNames.Count) targets" })
+    $targetType = ConvertTo-HtmlText -Value ($targetTypes -join ', ')
+    $runTimestamp = ConvertTo-HtmlText -Value $(if ($rawItems.Count -eq 1) { $rawItems[0].Timestamp } else { Get-Date })
 
     $summaryCards = @(
+        [pscustomobject]@{ Title = 'Targets checked'; Status = if ($targetCount -gt 0) { 'Green' } else { 'Unknown' }; Count = $targetCount }
         Get-CategorySummary -Findings $Findings -Title 'CPU' -Filter { $_.Category -eq 'CPU' }
         Get-CategorySummary -Findings $Findings -Title 'Memory' -Filter { $_.Category -eq 'Memory' }
+        Get-CategorySummary -Findings $Findings -Title 'Connectivity' -Filter { $_.Category -eq 'Connectivity' }
         Get-CategorySummary -Findings $Findings -Title 'Pending reboot' -Filter { $_.Category -eq 'PendingReboot' }
         Get-CategorySummary -Findings $Findings -Title 'Logical disks' -Filter { $_.Category -eq 'Storage' -and $_.CheckName -like 'Logical Disk*' }
         Get-CategorySummary -Findings $Findings -Title 'Physical disks' -Filter { $_.Category -eq 'Storage' -and $_.CheckName -like 'Physical Disk*' }
@@ -205,10 +231,12 @@ function Export-HealthHtmlReport {
         $reasonHtml = '<li>No readiness reasons were provided.</li>'
     }
 
-    $findingRows = (@($Findings) | Sort-Object Category, CheckName | ForEach-Object {
+    $findingRows = (@($Findings) | Sort-Object TargetName, Category, CheckName | ForEach-Object {
             $evidence = ConvertTo-HtmlText -Value $_.Evidence
             @"
 <tr>
+  <td>$(ConvertTo-HtmlText -Value $_.TargetName)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.TargetType)</td>
   <td>$(ConvertTo-HtmlText -Value $_.Category)</td>
   <td>$(ConvertTo-HtmlText -Value $_.CheckName)</td>
   <td><span class='badge $($_.Status.ToLowerInvariant())'>$(ConvertTo-HtmlText -Value $_.Status)</span></td>
@@ -304,7 +332,7 @@ function Export-HealthHtmlReport {
       <h2>Findings</h2>
       <table>
         <thead>
-          <tr><th>Category</th><th>CheckName</th><th>Status</th><th>Severity</th><th>Message</th><th>Recommendation</th><th>Evidence</th><th>ConfidenceLevel</th></tr>
+          <tr><th>TargetName</th><th>TargetType</th><th>Category</th><th>CheckName</th><th>Status</th><th>Severity</th><th>Message</th><th>Recommendation</th><th>Evidence</th><th>ConfidenceLevel</th></tr>
         </thead>
         <tbody>
           $findingRows
