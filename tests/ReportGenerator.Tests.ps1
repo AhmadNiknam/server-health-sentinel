@@ -63,6 +63,36 @@ Describe 'ReportGenerator' {
             Reasons         = @('Disk free space is Yellow.')
             Recommendation  = 'Review warnings before maintenance.'
         }
+
+        $script:TrendComparison = [pscustomobject]@{
+            HasPreviousSnapshot        = $true
+            PreviousTimestamp          = (Get-Date).AddDays(-7)
+            CurrentTimestamp           = Get-Date
+            HealthScoreChange          = 1
+            RedFindingChange           = 0
+            YellowFindingChange        = 1
+            UnknownFindingChange       = 0
+            CriticalFindingChange      = 0
+            HighFindingChange          = 0
+            MaintenanceReadinessChange = 'Unchanged'
+            RiskTrend                  = 'Worsening'
+            SummaryMessage             = 'Trend Indicator: Failure Risk appears to be increasing compared with the previous snapshot.'
+        }
+
+        $script:ComponentRisk = @(
+            [pscustomobject]@{
+                TargetName        = 'TEST-SERVER'
+                TargetType        = 'Local'
+                ComponentCategory = 'Storage'
+                ComponentName     = 'Logical Disk C:'
+                RiskLevel         = 'Medium'
+                RiskScore         = 2
+                EvidenceCount     = 1
+                EvidenceSummary   = 'Drive C: free space is below warning threshold.'
+                Recommendation    = 'Review storage capacity before maintenance.'
+                ConfidenceLevel   = 'High'
+            }
+        )
     }
 
     AfterEach {
@@ -106,6 +136,20 @@ Describe 'ReportGenerator' {
         $html | Should -Match 'Maintenance Readiness'
         $html | Should -Match 'Predictive Maintenance'
         $html | Should -Match 'Findings'
+    }
+
+    It 'exports an HTML report with trend history and component risk summary' {
+        $path = Export-HealthHtmlReport -RawResult $script:RawResult -Findings $script:Findings -OverallScore $script:OverallScore -MaintenanceReadiness $script:MaintenanceReadiness -OutputPath $script:OutputPath -TrendComparison $script:TrendComparison -ComponentRisk $script:ComponentRisk
+
+        Test-Path -LiteralPath $path | Should -Be $true
+        $html = Get-Content -LiteralPath $path -Raw
+        $html | Should -Match 'Trend History'
+        $html | Should -Match 'Predictive Risk'
+        $html | Should -Match 'Component risk summary'
+        $html | Should -Match 'Logical Disk C:'
+        $html | Should -Match 'rule-based trend indicators'
+        $html | Should -Not -Match 'will fail'
+        $html | Should -Not -Match 'remaining useful life is'
     }
 
     It 'exports an OnPrem HTML report with target-aware findings' {

@@ -157,3 +157,25 @@ Unreachable on-prem servers usually indicate DNS, routing, firewall, WinRM/CIM, 
 ### Action Approval
 
 Recommendations in Hybrid reports are advisory only. Any remediation, reboot, service restart, registry change, disk cleanup, firewall change, Windows setting change, network change, or Azure resource change requires administrator review and approval before action.
+
+## Using Trend History
+
+Run Server Health Sentinel with `-HistoryPath ./history` during weekly health reviews so each run can compare against the latest prior snapshot. Keep the same mode and inventory scope when possible so trend comparisons are meaningful.
+
+Example weekly Hybrid review:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -ServersPath ./config/servers.csv -AzureVmsPath ./config/azure-vms.csv -HistoryPath ./history
+```
+
+### Reviewing Worsening Risk
+
+When `RiskTrend` is `Worsening`, review the health score change, Red finding change, Critical finding change, High finding change, and component risk table first. Treat this as an early warning that needs investigation, not as an exact failure prediction.
+
+### Before Maintenance
+
+Use the trend section before maintenance windows to identify targets where risk is increasing, where maintenance readiness moved from `Ready` to `ReviewRequired` or `NotReady`, or where new component risks appeared.
+
+### Approval Requirements
+
+Trend findings are advisory. Any remediation, reboot, service restart, registry change, disk cleanup, firewall change, Windows setting change, network change, or Azure resource change still requires normal administrator approval and change control before action.

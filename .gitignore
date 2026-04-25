@@ -1,6 +1,11 @@
 reports/*.html
 reports/*.csv
 reports/*.json
+history/*.json
+history/*.csv
+history/*.html
+trend-data/*.json
+trend-data/*.csv
 config/servers.csv
 config/azure-vms.csv
 config/hardware-endpoints.csv

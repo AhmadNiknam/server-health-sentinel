@@ -104,3 +104,23 @@ Copy sample files from `config/*.sample.*` to local, ignored files before use. D
 ## Reports
 
 Generated reports will be written to `reports`. HTML, CSV, and JSON report files are ignored by Git.
+
+## Trend History
+
+Use `-HistoryPath` to store local trend snapshots and compare the current run with the latest previous snapshot:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Local -HistoryPath ./history
+pwsh ./src/main.ps1 -Mode Local -HistoryPath ./history
+```
+
+The first run has no previous snapshot, so `RiskTrend` is `Unknown` and the reason is `No previous snapshot found.` The second run compares current summary counts with the prior snapshot and reports changes such as `HealthScoreChange`, `RedFindingChange`, `CriticalFindingChange`, and `HighFindingChange`.
+
+Interpret trend values as directional operational signals:
+
+- `Worsening` means the health score increased, Red findings increased, or Critical/High findings increased.
+- `Stable` means the key risk indicators did not materially move.
+- `Improving` means the health score decreased and important Red/Critical/High risk indicators decreased.
+- `Unknown` means there was no previous snapshot or the prior signal could not be compared safely.
+
+History files may contain real target names and operational findings, so they should not be committed. The repository ignores `history/*.json`, `history/*.csv`, `history/*.html`, `trend-data/*.json`, and `trend-data/*.csv`; only `history/.gitkeep` belongs in source control.

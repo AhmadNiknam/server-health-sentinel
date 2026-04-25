@@ -210,6 +210,20 @@ reports/local-health-findings-20260424-223500.csv
 reports/local-health-report-20260424-223500.html
 ```
 
+## Trend History and Predictive Risk
+
+Server Health Sentinel can store lightweight local trend snapshots under `history/` so a current run can be compared with the previous run. The trend snapshot records summary counts, target summaries, category summaries, and finding summaries that help identify increasing or decreasing operational risk indicators over time.
+
+Trend output uses terms such as `Trend Indicator`, `Failure Risk`, `Early Warning`, `Risk Increasing`, `Risk Stable`, `Risk Decreasing`, and `Confidence Level`. It does not guarantee exact failure dates or exact remaining useful life.
+
+History files are ignored by Git because they may contain real environment details such as server names and operational findings. Only `history/.gitkeep` should be committed.
+
+Example command:
+
+```powershell
+pwsh ./src/main.ps1 -Mode Hybrid -IncludeLocal -ServersPath ./config/servers.sample.csv -AzureVmsPath ./config/azure-vms.sample.csv -HistoryPath ./history
+```
+
 ## Roadmap Summary
 
 The roadmap starts with local health checks and reporting, then adds predictive risk rules, on-prem remote checks, Azure VM health, hybrid mode, trend history, and optional hardware sensor integrations.

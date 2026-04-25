@@ -188,7 +188,16 @@ function Export-HealthHtmlReport {
 
         [string]$Prefix = 'local-health-report',
 
-        [string]$ReportTitle = 'Health Report'
+        [string]$ReportTitle = 'Health Report',
+
+        [AllowNull()]
+        [object]$TrendComparison = $null,
+
+        [AllowNull()]
+        [object[]]$ComponentRisk = @(),
+
+        [AllowNull()]
+        [object[]]$PredictiveRiskIndicators = @()
     )
 
     $path = New-ReportFileName -Prefix $Prefix -Extension 'html' -OutputPath $OutputPath
@@ -303,6 +312,46 @@ function Export-HealthHtmlReport {
         '<li>No early warning risk indicators were identified in the current finding set.</li>'
     }
 
+    $trendRisk = if ($null -ne $TrendComparison) { [string]$TrendComparison.RiskTrend } else { 'Unknown' }
+    $trendHtmlClass = switch ($trendRisk) {
+        'Improving' { 'green' }
+        'Stable' { 'yellow' }
+        'Worsening' { 'red' }
+        default { 'unknown' }
+    }
+    $trendSummary = if ($null -ne $TrendComparison -and -not [string]::IsNullOrWhiteSpace([string]$TrendComparison.SummaryMessage)) {
+        [string]$TrendComparison.SummaryMessage
+    }
+    else {
+        'Reason: No previous snapshot found.'
+    }
+    $healthScoreChange = if ($null -ne $TrendComparison) { $TrendComparison.HealthScoreChange } else { 0 }
+    $redFindingChange = if ($null -ne $TrendComparison) { $TrendComparison.RedFindingChange } else { 0 }
+    $criticalFindingChange = if ($null -ne $TrendComparison) { $TrendComparison.CriticalFindingChange } else { 0 }
+    $highFindingChange = if ($null -ne $TrendComparison) { $TrendComparison.HighFindingChange } else { 0 }
+    $maintenanceReadinessChange = if ($null -ne $TrendComparison) { $TrendComparison.MaintenanceReadinessChange } else { 'Unknown' }
+
+    $componentRiskRows = if (@($ComponentRisk).Count -gt 0) {
+        (@($ComponentRisk) | Sort-Object TargetName, ComponentCategory, ComponentName | ForEach-Object {
+                @"
+<tr>
+  <td>$(ConvertTo-HtmlText -Value $_.TargetName)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.TargetType)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.ComponentCategory)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.ComponentName)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.RiskLevel)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.EvidenceCount)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.EvidenceSummary)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.Recommendation)</td>
+  <td>$(ConvertTo-HtmlText -Value $_.ConfidenceLevel)</td>
+</tr>
+"@
+            }) -join [Environment]::NewLine
+    }
+    else {
+        '<tr><td colspan="9">No component risk indicators were identified in the current finding set.</td></tr>'
+    }
+
     $html = @"
 <!doctype html>
 <html lang="en">
@@ -325,6 +374,9 @@ function Export-HealthHtmlReport {
     .yellow { color: #664d03; background: #fff3cd; }
     .red { color: #842029; background: #f8d7da; }
     .unknown { color: #41464b; background: #e2e3e5; }
+    .improving { color: #0f5132; background: #d1e7dd; }
+    .stable { color: #664d03; background: #fff3cd; }
+    .worsening { color: #842029; background: #f8d7da; }
     .ready { color: #0f5132; background: #d1e7dd; }
     .reviewrequired { color: #664d03; background: #fff3cd; }
     .notready { color: #842029; background: #f8d7da; }
@@ -388,6 +440,29 @@ function Export-HealthHtmlReport {
       <p><span class="badge $($MaintenanceReadiness.ReadinessStatus.ToLowerInvariant())">$(ConvertTo-HtmlText -Value $MaintenanceReadiness.ReadinessStatus)</span></p>
       <ul>$reasonHtml</ul>
       <p><strong>Recommendation:</strong> $(ConvertTo-HtmlText -Value $MaintenanceReadiness.Recommendation)</p>
+    </section>
+
+    <section>
+      <h2>Trend History and Predictive Risk</h2>
+      <p>This section is based on rule-based trend indicators. It does not guarantee exact failure dates or exact remaining useful life.</p>
+      <div class="grid">
+        <div class="card"><div class="card-title">Risk trend</div><span class="badge $trendHtmlClass">$(ConvertTo-HtmlText -Value $trendRisk)</span></div>
+        <div class="card"><div class="card-title">Health score change</div>$(ConvertTo-HtmlText -Value $healthScoreChange)</div>
+        <div class="card"><div class="card-title">Red finding change</div>$(ConvertTo-HtmlText -Value $redFindingChange)</div>
+        <div class="card"><div class="card-title">Critical finding change</div>$(ConvertTo-HtmlText -Value $criticalFindingChange)</div>
+        <div class="card"><div class="card-title">High finding change</div>$(ConvertTo-HtmlText -Value $highFindingChange)</div>
+        <div class="card"><div class="card-title">Maintenance readiness change</div>$(ConvertTo-HtmlText -Value $maintenanceReadinessChange)</div>
+      </div>
+      <p>$(ConvertTo-HtmlText -Value $trendSummary)</p>
+      <h3>Component risk summary</h3>
+      <table>
+        <thead>
+          <tr><th>TargetName</th><th>TargetType</th><th>ComponentCategory</th><th>ComponentName</th><th>RiskLevel</th><th>EvidenceCount</th><th>EvidenceSummary</th><th>Recommendation</th><th>ConfidenceLevel</th></tr>
+        </thead>
+        <tbody>
+          $componentRiskRows
+        </tbody>
+      </table>
     </section>
 
     <section>
