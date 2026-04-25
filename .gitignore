@@ -1,0 +1,14 @@
+reports/*.html
+reports/*.csv
+reports/*.json
+config/servers.csv
+config/azure-vms.csv
+config/hardware-endpoints.csv
+config/thresholds.json
+config/predictive-rules.json
+*.log
+*.env
+*.secret
+*.key
+*.pem
+local.settings.json

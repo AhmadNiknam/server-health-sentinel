@@ -1,0 +1,29 @@
+{
+  "os": {
+    "cpuPercentWarning": 80,
+    "cpuPercentCritical": 95,
+    "memoryPercentWarning": 80,
+    "memoryPercentCritical": 95,
+    "minimumUptimeHoursForNotice": 1
+  },
+  "storage": {
+    "freeSpacePercentWarning": 20,
+    "freeSpacePercentCritical": 10,
+    "freeSpaceGbWarning": 20,
+    "freeSpaceGbCritical": 10
+  },
+  "network": {
+    "minimumLinkSpeedMbpsWarning": 1000,
+    "flagDisconnectedAdapters": true
+  },
+  "events": {
+    "lookbackHours": 24,
+    "criticalEventWarningCount": 5,
+    "criticalEventCriticalCount": 20
+  },
+  "hardware": {
+    "temperatureCelsiusWarning": 75,
+    "temperatureCelsiusCritical": 85,
+    "enabledByDefault": false
+  }
+}

@@ -1,0 +1,4 @@
+Name,ResourceGroup,SubscriptionAlias,ExpectedOsType,Notes
+sample-vm-001,rg-sample-servers,SampleSubscriptionAlias,Windows,Fake sample Azure VM
+sample-vm-002,rg-sample-servers,SampleSubscriptionAlias,Windows,Fake sample Azure VM
+sample-vm-003,rg-sample-dr,SampleSubscriptionAlias,Linux,Fake sample Azure VM

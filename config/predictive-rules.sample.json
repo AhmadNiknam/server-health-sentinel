@@ -1,0 +1,77 @@
+{
+  "riskLevels": [
+    "Low",
+    "Medium",
+    "High",
+    "Critical",
+    "Unknown"
+  ],
+  "rules": [
+    {
+      "id": "disk-storage-timeouts",
+      "category": "Disk",
+      "description": "Repeated storage timeout or retry events may indicate increasing disk, controller, or path risk.",
+      "signals": [
+        "Windows Event Log storage timeout events",
+        "Disk warning indicators",
+        "SMART or vendor health warning when available"
+      ],
+      "threshold": {
+        "eventCount": 3,
+        "lookbackHours": 24
+      },
+      "riskLevel": "High",
+      "confidence": "Medium"
+    },
+    {
+      "id": "event-log-critical-repeat",
+      "category": "EventLog",
+      "description": "Repeated critical system events may indicate an unstable server component.",
+      "signals": [
+        "System log critical events",
+        "Repeated provider and event ID combinations"
+      ],
+      "threshold": {
+        "eventCount": 5,
+        "lookbackHours": 24
+      },
+      "riskLevel": "Medium",
+      "confidence": "Low"
+    },
+    {
+      "id": "network-link-instability",
+      "category": "Network",
+      "description": "Repeated link down/up events or lower-than-expected link speed may indicate cable, switch port, driver, or NIC risk.",
+      "signals": [
+        "NIC link flap events",
+        "Link speed below expected value",
+        "Disconnected adapter state"
+      ],
+      "threshold": {
+        "linkFlapCount": 3,
+        "lookbackHours": 24
+      },
+      "riskLevel": "Medium",
+      "confidence": "Medium"
+    },
+    {
+      "id": "hardware-sensor-warning",
+      "category": "HardwareSensor",
+      "description": "Hardware management status of Warning or Critical may indicate component risk.",
+      "signals": [
+        "Power supply warning",
+        "Fan warning",
+        "Temperature threshold warning",
+        "RAID or controller warning where available"
+      ],
+      "threshold": {
+        "sensorStatus": [
+          "Warning",
+          "Critical"
+        ]
+      },
+      "riskLevel": "High",
+      "confidence": "Medium"
+    }
+  ]
+}

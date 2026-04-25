@@ -1,0 +1,4 @@
+Name,Vendor,Endpoint,Protocol,Enabled,Notes
+LAB-HOST-001,Dell,https://idrac-lab-host-001.example.invalid,Redfish,false,Fake sample endpoint
+LAB-HOST-002,HPE,https://ilo-lab-host-002.example.invalid,Redfish,false,Fake sample endpoint
+LAB-HOST-003,Lenovo,https://xclarity-lab-host-003.example.invalid,Redfish,false,Fake sample endpoint
